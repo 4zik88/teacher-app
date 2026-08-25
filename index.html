@@ -794,9 +794,16 @@ table.sched td.today { background:#FFF6D9; }
 
   /* ---------- синхронізація ---------- */
   var SYNCKEY_LS = "informTeacherSyncKey";
+  var SYNCREV_LS = "informTeacherSyncRev";
   var pushTimer = null;
   function syncKey() {
     try { return localStorage.getItem(SYNCKEY_LS) || ""; } catch (e) { return ""; }
+  }
+  function localRev() {
+    try { return Number(localStorage.getItem(SYNCREV_LS) || 0) || 0; } catch (e) { return 0; }
+  }
+  function setLocalRev(r) {
+    try { localStorage.setItem(SYNCREV_LS, String(r || 0)); } catch (e) {}
   }
   function canSync() {
     return location.protocol.indexOf("http") === 0 && syncKey() !== "";
@@ -806,10 +813,11 @@ table.sched td.today { background:#FFF6D9; }
     el.innerHTML = esc(msg);
     el.style.color = kind === "err" ? "#C94F4F" : (kind === "ok" ? "#3A7D44" : "#5A6B7C");
   }
+  function nClasses() { return (state.classes || []).length; }
   function schedulePush() {
     if (!canSync()) return;
     if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(function () { pushToServer(true); }, 1000);
+    pushTimer = setTimeout(function () { pushToServer(true, false); }, 1000);
   }
   /* живий канал: сервер повідомляє про зміни з інших пристроїв */
   var es = null;
@@ -820,11 +828,11 @@ table.sched td.today { background:#FFF6D9; }
     es.onmessage = function (ev) {
       try {
         var d = JSON.parse(ev.data);
-        if ((d.updatedAt || 0) > (state.updatedAt || 0)) pullFromServer(false);
+        if ((d.rev || 0) > localRev()) pullFromServer(false);
       } catch (e) {}
     };
   }
-  function apiReq(method, cb) {
+  function apiReq(method, payload, cb) {
     var xhr = new XMLHttpRequest();
     xhr.open(method, "/api/data", true);
     xhr.setRequestHeader("X-Sync-Key", syncKey());
@@ -835,40 +843,78 @@ table.sched td.today { background:#FFF6D9; }
       try { resp = JSON.parse(xhr.responseText); } catch (e) {}
       cb(xhr.status, resp);
     };
-    xhr.send(method === "POST" ? JSON.stringify({ data: state }) : null);
+    xhr.send(method === "POST" ? JSON.stringify(payload) : null);
   }
-  function pushToServer(quiet) {
+  function pushToServer(quiet, force) {
     if (!canSync()) { if (!quiet) alert("Спочатку введіть і збережіть ключ синхронізації."); return; }
-    apiReq("POST", function (status) {
-      if (status === 200) setSyncStatus("Надіслано на сервер о " + new Date().toLocaleTimeString(), "ok");
-      else if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
+    var payload = { data: state };
+    if (force) payload.force = true; else payload.baseRev = localRev();
+    apiReq("POST", payload, function (status, resp) {
+      if (status === 200) {
+        setLocalRev(resp && resp.rev);
+        setSyncStatus("Надіслано на сервер о " + new Date().toLocaleTimeString() +
+          " (ревізія " + (resp && resp.rev) + ", класів: " + nClasses() + ")", "ok");
+      } else if (status === 409) {
+        if (resp && resp.error && resp.error.indexOf("erase") !== -1) {
+          setSyncStatus("Сервер відхилив: на ньому є дані (класів: " +
+            (resp.serverClasses || 0) + "), а тут порожньо. Натисніть «Отримати з сервера».", "err");
+        } else {
+          setSyncStatus("На сервері є новіші зміни (ревізія " + (resp && resp.rev) +
+            "). Натисніть «Отримати з сервера», щоб їх забрати.", "err");
+        }
+      } else if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
       else if (status === 500) setSyncStatus("На сервері не задано SYNC_KEY", "err");
       else setSyncStatus("Немає зв’язку із сервером — зміни збережено локально", quiet ? "" : "err");
     });
   }
   function pullFromServer(interactive) {
     if (!canSync()) { if (interactive) alert("Спочатку введіть і збережіть ключ синхронізації."); return; }
-    apiReq("GET", function (status, resp) {
-      if (status === 200 && resp && resp.data && resp.data.classes) {
-        var srvT = resp.data.updatedAt || 0, locT = state.updatedAt || 0;
-        if (interactive) {
-          if (!confirm("Замінити дані на цьому пристрої даними із сервера?")) return;
-          applyRestored(resp.data);
-          setSyncStatus("Отримано з сервера", "ok");
-        } else if (srvT > locT) {
-          applyRestored(resp.data);
-          setSyncStatus("Оновлено з сервера", "ok");
+    apiReq("GET", null, function (status, resp) {
+      if (status !== 200) {
+        if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
+        else if (status === 500) setSyncStatus("На сервері не задано SYNC_KEY", "err");
+        else setSyncStatus("Немає зв’язку із сервером — працюємо локально");
+        return;
+      }
+      var srvRev = (resp && resp.rev) || 0;
+      var srvData = resp && resp.data;
+      var srvN = (srvData && srvData.classes) ? srvData.classes.length : 0;
+
+      /* на сервері порожньо */
+      if (!srvData || !srvData.classes) {
+        if (nClasses() > 0) {
+          setSyncStatus("На сервері ще немає даних — надсилаю поточні…");
+          pushToServer(true, true);
         } else {
-          setSyncStatus("Дані актуальні (синхронізовано)", "ok");
-          if (locT > srvT) pushToServer(true);
+          setSyncStatus("На сервері ще немає даних", "");
         }
-      } else if (status === 404) {
-        setSyncStatus("На сервері ще немає даних — надсилаю поточні…");
-        pushToServer(true);
-      } else if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
-      else if (status === 500) setSyncStatus("На сервері не задано SYNC_KEY", "err");
-      else setSyncStatus("Немає зв’язку із сервером — працюємо локально");
+        return;
+      }
+      if (interactive) {
+        if (!confirm("Замінити дані на цьому пристрої даними із сервера?\n\nНа сервері класів: " +
+            srvN + ", тут зараз: " + nClasses())) return;
+        applyRestoredFromServer(srvData, srvRev);
+        setSyncStatus("Отримано з сервера (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
+        return;
+      }
+      if (srvRev > localRev()) {
+        applyRestoredFromServer(srvData, srvRev);
+        setSyncStatus("Оновлено з сервера (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
+      } else if (srvRev < localRev()) {
+        /* сервер відкотився (напр. перезапуск без диска) — повертаємо свої дані */
+        setSyncStatus("Сервер втратив дані — відновлюю з цього пристрою…");
+        pushToServer(true, true);
+      } else {
+        setSyncStatus("Синхронізовано (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
+      }
     });
+  }
+  function applyRestoredFromServer(data, rev) {
+    var prevPush = pushTimer;
+    if (prevPush) { clearTimeout(pushTimer); pushTimer = null; }
+    applyRestored(data);
+    setLocalRev(rev);
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
   }
   $("btnSyncSaveKey").onclick = function () {
     var k = trim($("syncKeyInput").value);
@@ -878,7 +924,7 @@ table.sched td.today { background:#FFF6D9; }
     pullFromServer(false);
     startEvents();
   };
-  $("btnSyncPush").onclick = function () { pushToServer(false); };
+  $("btnSyncPush").onclick = function () { pushToServer(false, false); };
   $("btnSyncPull").onclick = function () { pullFromServer(true); };
 
   /* автопідтягування: при поверненні у застосунок і раз на хвилину */

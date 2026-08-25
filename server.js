@@ -54,6 +54,32 @@ http.createServer(function (req, res) {
     return;
   }
 
+  /* ---- діагностика: відкрити у браузері ?key=... ---- */
+  if (p === "/api/status") {
+    var sm = req.url.match(/[?&]key=([^&]*)/);
+    if (!SYNC_KEY || (sm ? decodeURIComponent(sm[1]) : "") !== SYNC_KEY) {
+      res.writeHead(403, JSONH); res.end(JSON.stringify({ error: "bad key" })); return;
+    }
+    fs.readFile(DATA_FILE, "utf8", function (err, txt) {
+      var info = { dataFile: DATA_FILE, hasData: false, rev: 0, classes: 0, classNames: [], savedAt: null };
+      if (!err) {
+        try {
+          var o = JSON.parse(txt);
+          var d = o.data || {};
+          info.hasData = true;
+          info.rev = o.rev || 0;
+          info.savedAt = o.savedAt || null;
+          info.classes = (d.classes || []).length;
+          for (var i = 0; i < (d.classes || []).length; i++) info.classNames.push(d.classes[i].name);
+        } catch (e) { info.error = "corrupt data file"; }
+      }
+      info.liveClients = sseClients.length;
+      res.writeHead(200, JSONH);
+      res.end(JSON.stringify(info, null, 2));
+    });
+    return;
+  }
+
   /* ---- API синхронізації ---- */
   if (p === "/api/data") {
     if (!SYNC_KEY) {
@@ -68,7 +94,7 @@ http.createServer(function (req, res) {
     }
     if (req.method === "GET") {
       fs.readFile(DATA_FILE, "utf8", function (err, txt) {
-        if (err) { res.writeHead(404, JSONH); res.end(JSON.stringify({ error: "no data yet" })); return; }
+        if (err) { res.writeHead(200, JSONH); res.end(JSON.stringify({ rev: 0, data: null })); return; }
         res.writeHead(200, JSONH);
         res.end(txt);
       });
@@ -83,17 +109,38 @@ http.createServer(function (req, res) {
       });
       req.on("end", function () {
         if (dropped) return;
-        var parsed;
+        var incoming;
         try {
-          parsed = JSON.parse(body);
-          if (!parsed || !parsed.data || !parsed.data.classes) throw new Error("bad");
+          incoming = JSON.parse(body);
+          if (!incoming || !incoming.data || !incoming.data.classes) throw new Error("bad");
         } catch (e) {
           res.writeHead(400, JSONH); res.end(JSON.stringify({ error: "bad json" })); return;
         }
-        fs.writeFile(DATA_FILE, body, function (err) {
-          if (err) { res.writeHead(500, JSONH); res.end(JSON.stringify({ error: "write failed" })); return; }
-          res.writeHead(200, JSONH); res.end(JSON.stringify({ ok: true }));
-          broadcast({ updatedAt: (parsed.data && parsed.data.updatedAt) || Date.now() });
+        fs.readFile(DATA_FILE, "utf8", function (err, txt) {
+          var cur = null;
+          if (!err) { try { cur = JSON.parse(txt); } catch (e2) {} }
+          var curRev = (cur && cur.rev) || 0;
+          var curClasses = (cur && cur.data && cur.data.classes) ? cur.data.classes.length : 0;
+          var newClasses = incoming.data.classes.length;
+
+          /* захист: порожній пристрій не затирає наявні дані без явного дозволу */
+          if (curClasses > 0 && newClasses === 0 && !incoming.force) {
+            res.writeHead(409, JSONH);
+            res.end(JSON.stringify({ error: "refused: would erase server data", rev: curRev, serverClasses: curClasses }));
+            return;
+          }
+          /* захист від сліпого перезапису чужішої ревізії */
+          if (incoming.baseRev !== undefined && incoming.baseRev !== curRev && !incoming.force) {
+            res.writeHead(409, JSONH);
+            res.end(JSON.stringify({ error: "revision conflict", rev: curRev, serverClasses: curClasses }));
+            return;
+          }
+          var out = { rev: curRev + 1, savedAt: new Date().toISOString(), data: incoming.data };
+          fs.writeFile(DATA_FILE, JSON.stringify(out), function (werr) {
+            if (werr) { res.writeHead(500, JSONH); res.end(JSON.stringify({ error: "write failed" })); return; }
+            res.writeHead(200, JSONH); res.end(JSON.stringify({ ok: true, rev: out.rev }));
+            broadcast({ rev: out.rev });
+          });
         });
       });
       return;
