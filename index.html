@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Помічник учителя інформатики</title>
+<style>
+html, body { margin:0; padding:0; -webkit-text-size-adjust:100%; -webkit-tap-highlight-color: rgba(36,86,166,0.15); }
+body {
+  font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color:#1D2B3A; background-color:#FAF8F2;
+  background-image:
+    -webkit-linear-gradient(top, rgba(184,204,224,0.5) 1px, transparent 1px),
+    -webkit-linear-gradient(left, rgba(184,204,224,0.5) 1px, transparent 1px);
+  background-image:
+    linear-gradient(to bottom, rgba(184,204,224,0.5) 1px, transparent 1px),
+    linear-gradient(to right, rgba(184,204,224,0.5) 1px, transparent 1px);
+  background-size:28px 28px; min-height:100%;
+}
+.margin-line { position:fixed; top:0; bottom:0; left:14px; width:2px; background:rgba(201,79,79,0.5); z-index:0; }
+.wrap { position:relative; z-index:1; max-width:1000px; margin:0 auto; padding:10px 12px 40px 28px; }
+h1 { font-family:Menlo,Monaco,"Courier New",monospace; font-size:18px; font-weight:bold; letter-spacing:1px; margin:8px 0 12px 0; color:#2456A6; }
+h1 .cur { display:inline-block; width:10px; background:#2456A6; color:#2456A6;
+  -webkit-animation:blink 1.1s step-end infinite; animation:blink 1.1s step-end infinite; }
+@-webkit-keyframes blink { 50% { opacity:0; } }
+@keyframes blink { 50% { opacity:0; } }
+
+.tabs { margin-bottom:14px; white-space:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tab { display:inline-block; padding:12px 14px; margin-right:6px; font-size:15px; font-weight:600;
+  color:#2456A6; background:#FFF; border:2px solid #2456A6; border-radius:8px; cursor:pointer; }
+.tab.active { background:#2456A6; color:#FFF; }
+.panel { display:none; } .panel.active { display:block; }
+
+.card { background:rgba(255,255,255,0.93); border:1px solid #D8E3EE; border-radius:10px;
+  padding:14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(29,43,58,0.06); }
+label { font-size:14px; font-weight:600; display:block; margin-bottom:6px; }
+select, input[type=text], textarea {
+  font-family:inherit; font-size:16px; color:#1D2B3A; border:2px solid #B8CCE0; border-radius:8px;
+  background:#FFF; padding:10px; width:100%; -webkit-box-sizing:border-box; box-sizing:border-box;
+}
+textarea { min-height:140px; resize:vertical; }
+.row { margin-bottom:12px; }
+.inline { width:auto; display:inline-block; }
+.btn { display:inline-block; font-size:16px; font-weight:700; padding:12px 18px; margin:4px 6px 4px 0;
+  color:#FFF; background:#2456A6; border:0; border-radius:10px; cursor:pointer; }
+.btn:active { opacity:0.8; }
+.btn.secondary { background:#FFF; color:#2456A6; border:2px solid #2456A6; }
+.btn.danger { background:#C94F4F; }
+.btn.ghost { background:transparent; color:#C94F4F; border:0; font-weight:600; padding:8px; }
+.hint { font-size:13px; color:#5A6B7C; margin-top:6px; }
+.mono { font-family:Menlo,Monaco,"Courier New",monospace; }
+
+/* ---- журнал ---- */
+.jwrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+table.journal { border-collapse:collapse; background:#FFF; min-width:100%; }
+table.journal th, table.journal td { border:1px solid #C7D6E5; padding:8px 6px; font-size:14px; text-align:center; }
+table.journal th { background:#EAF1F8; color:#2456A6; font-size:12px; min-width:52px; cursor:pointer; }
+table.journal th.namecol, table.journal td.namecol { text-align:left; min-width:150px; background:#FFF;
+  position:relative; font-weight:600; cursor:default; }
+table.journal td.mark { min-width:44px; height:34px; cursor:pointer; font-family:Menlo,Monaco,monospace; font-size:16px; }
+table.journal td.mark.absent { color:#C94F4F; font-weight:bold; }
+table.journal td.mark.good { color:#3A7D44; font-weight:bold; }
+table.journal td.avg { background:#F4F8EC; font-weight:bold; font-family:Menlo,Monaco,monospace; }
+table.journal th.avg { background:#E3EEDD; color:#3A7D44; cursor:default; }
+
+/* ---- КТП ---- */
+table.ktp { border-collapse:collapse; background:#FFF; width:100%; }
+table.ktp td { border:1px solid #C7D6E5; padding:8px 6px; font-size:15px; vertical-align:top; }
+table.ktp td.knum { width:32px; text-align:center; font-weight:bold; background:#F4F7FA; font-size:13px; }
+table.ktp td.kdate { width:62px; font-family:Menlo,Monaco,"Courier New",monospace; font-size:14px; cursor:pointer; white-space:nowrap; }
+table.ktp td.ktopic { cursor:pointer; }
+table.ktp td.kact { width:92px; white-space:nowrap; text-align:right; }
+table.ktp td.kact .btn.ghost { padding:6px 8px; margin:0; font-size:16px; }
+table.ktp tr.kdone td { background:#F7FBF5; }
+table.ktp tr.kdone td.kdate { color:#3A7D44; font-weight:bold; }
+table.ktp tr.ksec td { background:#EAF1F8; color:#2456A6; font-weight:bold; cursor:pointer; }
+.kdays label { display:inline-block; font-weight:400; margin-right:10px; font-size:15px; }
+
+/* ---- розклад ---- */
+.swrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+table.sched { border-collapse:collapse; background:#FFF; width:100%; }
+table.sched th, table.sched td { border:1px solid #C7D6E5; padding:4px; }
+table.sched th { background:#EAF1F8; color:#2456A6; font-size:13px; padding:8px 4px; }
+table.sched td.num { text-align:center; font-weight:bold; background:#F4F7FA; width:30px; font-size:13px; }
+table.sched input { border:0; border-radius:0; padding:8px 6px; font-size:14px; width:100%; min-width:110px;
+  -webkit-box-sizing:border-box; box-sizing:border-box; background:transparent; }
+table.sched td.today { background:#FFF6D9; }
+
+/* ---- плани уроків ---- */
+.lesson { background:#FFF; border:2px solid #D8E3EE; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+.lesson.done { border-color:#3A7D44; background:#F7FBF5; }
+.lesson .ldate { font-family:Menlo,Monaco,monospace; font-size:13px; color:#5A6B7C; }
+.lesson .ltopic { font-size:16px; font-weight:700; margin:4px 0; }
+.lesson .lhw { font-size:14px; }
+.lesson .lhw b { color:#2456A6; }
+.lesson .lnote { font-size:13px; color:#5A6B7C; margin-top:4px; white-space:pre-wrap; }
+.listline { padding:8px 4px; border-bottom:1px dashed #D8E3EE; font-size:16px; }
+.listline .btn.ghost { float:right; margin-top:-6px; }
+@media (max-width:480px){ .tab { font-size:14px; padding:10px 10px; } }
+</style>
+</head>
+<body>
+<div class="margin-line"></div>
+<div class="wrap">
+  <h1>&gt; помічник учителя інформатики<span class="cur">_</span></h1>
+
+  <div class="tabs" id="tabs">
+    <span class="tab active" data-p="p-journal">Журнал</span>
+    <span class="tab" data-p="p-plans">Уроки та Д/З</span>
+    <span class="tab" data-p="p-ktp">КТП</span>
+    <span class="tab" data-p="p-sched">Розклад</span>
+    <span class="tab" data-p="p-notes">Нотатки</span>
+    <span class="tab" data-p="p-class">Класи</span>
+  </div>
+
+  <!-- ================= ЖУРНАЛ ================= -->
+  <div class="panel active" id="p-journal">
+    <div class="card">
+      <div class="row">
+        <label>Клас</label>
+        <select id="jClass"></select>
+      </div>
+      <button class="btn" id="btnJCol">+ Колонка (урок)</button>
+      <button class="btn secondary" id="btnJExport">Експорт CSV</button>
+      <div class="hint">Оцінка — торкніться клітинки. «н» — відсутній. Порожній ввід — стерти.
+        Торкніться заголовка колонки, щоб перейменувати або видалити її. Остання колонка — середній бал.</div>
+      <div class="jwrap" style="margin-top:10px;"><div id="jTable"></div></div>
+      <div id="jExportBox" style="display:none; margin-top:10px;">
+        <label>CSV — виділіть усе та скопіюйте (вставляється в Numbers / Excel / Google Таблиці)</label>
+        <textarea id="jExportText" readonly onclick="this.select()"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= УРОКИ ТА ДЗ ================= -->
+  <div class="panel" id="p-plans">
+    <div class="card">
+      <div class="row">
+        <label>Клас</label>
+        <select id="lClass"></select>
+      </div>
+      <div class="row">
+        <label>Дата</label>
+        <input type="text" id="lDate" placeholder="напр. 02.09" class="inline" style="width:120px;">
+      </div>
+      <div class="row">
+        <label>Тема уроку</label>
+        <input type="text" id="lTopic" placeholder="Алгоритми та їх властивості">
+      </div>
+      <div class="row">
+        <label>Домашнє завдання</label>
+        <input type="text" id="lHw" placeholder="§5, завд. 3–4">
+      </div>
+      <div class="row">
+        <label>Нотатка до уроку (необов’язково)</label>
+        <textarea id="lNote" style="min-height:70px;" placeholder="Що підготувати, кого спитати, на чому зупинилися…"></textarea>
+      </div>
+      <button class="btn" id="btnLAdd">Додати урок</button>
+    </div>
+    <div class="card">
+      <label>Список уроків <span class="hint" style="display:inline">(зверху — новіші; ✓ — урок проведено)</span></label>
+      <div id="lList"></div>
+    </div>
+  </div>
+
+  <!-- ================= КТП ================= -->
+  <div class="panel" id="p-ktp">
+    <div class="card">
+      <div class="row">
+        <label>Клас</label>
+        <select id="kClass"></select>
+      </div>
+      <div class="row">
+        <label>Додати теми списком — по одній у рядку</label>
+        <textarea id="kBulk" placeholder="# Розділ 1. Інформаційні процеси&#10;Повідомлення, дані, інформація&#10;Кодування даних&#10;Практична робота №1"></textarea>
+        <div class="hint">Рядок, що починається з <b>#</b>, стане назвою розділу. Теми додаються в кінець КТП — можна вставляти частинами (за семестрами).</div>
+      </div>
+      <button class="btn" id="btnKBulk">Додати до КТП</button>
+      <button class="btn secondary" id="btnKAdd">+ Один урок</button>
+      <button class="btn secondary" id="btnKSection">+ Розділ</button>
+    </div>
+
+    <div class="card">
+      <label>Проставити дати автоматично</label>
+      <div class="row">
+        Початок: <input type="text" id="kStart" class="inline" style="width:130px;" placeholder="01.09.2026">
+      </div>
+      <div class="row kdays">
+        Дні уроків у цьому класі:
+        <label><input type="checkbox" id="kd0"> Пн</label>
+        <label><input type="checkbox" id="kd1"> Вт</label>
+        <label><input type="checkbox" id="kd2"> Ср</label>
+        <label><input type="checkbox" id="kd3"> Чт</label>
+        <label><input type="checkbox" id="kd4"> Пт</label>
+      </div>
+      <div class="row">
+        <label style="display:inline; font-weight:400;">
+          <input type="checkbox" id="kOnlyEmpty" checked> заповнювати лише порожні дати
+        </label>
+      </div>
+      <button class="btn secondary" id="btnKDates">Проставити дати</button>
+      <div class="hint">Дати призначаються темам по черзі у вибрані дні тижня. Канікули врахуйте вручну: торкніться дати в таблиці та виправте — далі можна знову запустити авторозстановку з нової дати.</div>
+    </div>
+
+    <div class="card">
+      <label>Календарно-тематичне планування</label>
+      <button class="btn secondary" id="btnKExport">Експорт CSV</button>
+      <div id="kTable" style="margin-top:10px;"></div>
+      <div id="kExportBox" style="display:none; margin-top:10px;">
+        <label>CSV — виділіть усе та скопіюйте</label>
+        <textarea id="kExportText" readonly onclick="this.select()"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= РОЗКЛАД ================= -->
+  <div class="panel" id="p-sched">
+    <div class="card">
+      <label>Мій тижневий розклад</label>
+      <div class="hint" style="margin-bottom:8px;">Впишіть клас і кабінет у клітинки — зберігається автоматично. Сьогоднішній день підсвічено.</div>
+      <div class="swrap"><table class="sched" id="schedTable"></table></div>
+    </div>
+  </div>
+
+  <!-- ================= НОТАТКИ ================= -->
+  <div class="panel" id="p-notes">
+    <div class="card">
+      <label>Робочі нотатки</label>
+      <textarea id="notesArea" style="min-height:320px;" placeholder="Будь-які записи: паролі до навчальних сервісів, список на олімпіаду, ідеї до уроків…"></textarea>
+      <div class="hint">Зберігається автоматично на цьому пристрої.</div>
+    </div>
+  </div>
+
+  <!-- ================= КЛАСИ ================= -->
+  <div class="panel" id="p-class">
+    <div class="card">
+      <div class="row">
+        <label>Назва класу (наприклад, 7-А)</label>
+        <input type="text" id="clsName" placeholder="7-А">
+      </div>
+      <div class="row">
+        <label>Список учнів — по одному в рядку</label>
+        <textarea id="clsStudents" placeholder="Іваненко Марія&#10;Петренко Олег&#10;Сидоренко Анна"></textarea>
+      </div>
+      <button class="btn" id="btnClsSave">Зберегти клас</button>
+      <div class="hint">Дані зберігаються локально (localStorage). На iPad: Safari → Поділитися → «На Домашній екран» — застосунок працюватиме офлайн.</div>
+    </div>
+    <div class="card">
+      <label>Збережені класи</label>
+      <div id="clsList"></div>
+    </div>
+    <div class="card">
+      <label>Резервна копія</label>
+      <div class="row">
+        <button class="btn" id="btnFileSave">Зберегти у файл</button>
+        <button class="btn" id="btnFileLoad">Відновити з файлу</button>
+        <input type="file" id="fileInput" accept=".json,application/json,text/plain" style="display:none;">
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnBackup">Показати копію текстом</button>
+        <button class="btn secondary" id="btnRestore">Відновити з тексту</button>
+      </div>
+      <div id="backupBox" style="display:none; margin-top:8px;">
+        <textarea id="backupText" style="min-height:100px;" placeholder="Вставте сюди збережений раніше текст копії…"></textarea>
+        <div class="hint">Скопіюйте цей текст у нотатки/пошту — це вся база. Щоб перенести на інший пристрій, вставте текст і натисніть «Відновити з тексту».</div>
+      </div>
+      <div class="hint">Файл .json — це вся база одним файлом. Перенесення Mac → iPad: збережіть файл в iCloud Drive, на iPad натисніть «Відновити з файлу» та оберіть його через iCloud Drive. Якщо на старому iPad збереження у файл не спрацює — користуйтеся текстовою копією.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "informTeacherHelper_v1";
+  var state = { classes: [], journal: {}, plans: {}, notes: "", sched: null };
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var s = JSON.parse(raw); if (s && s.classes) state = s; }
+    } catch (e) {}
+    if (!state.journal) state.journal = {};
+    if (!state.plans) state.plans = {};
+    if (!state.ktp) state.ktp = {};
+    if (typeof state.notes !== "string") state.notes = "";
+    if (!state.sched) {
+      state.sched = [];
+      for (var d = 0; d < 5; d++) { var r = []; for (var l = 0; l < 8; l++) r.push(""); state.sched.push(r); }
+    }
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function trim(s) { return String(s).replace(/^\s+|\s+$/g, ""); }
+
+  /* ---------- вкладки ---------- */
+  var tabs = $("tabs").getElementsByClassName("tab");
+  function activate(pid) {
+    var i, panels = document.getElementsByClassName("panel");
+    for (i = 0; i < panels.length; i++) panels[i].className = "panel";
+    for (i = 0; i < tabs.length; i++) tabs[i].className = "tab";
+    $(pid).className = "panel active";
+    for (i = 0; i < tabs.length; i++)
+      if (tabs[i].getAttribute("data-p") === pid) tabs[i].className = "tab active";
+  }
+  for (var ti = 0; ti < tabs.length; ti++) {
+    tabs[ti].onclick = (function (t) { return function () { activate(t.getAttribute("data-p")); }; })(tabs[ti]);
+  }
+
+  /* ---------- класи ---------- */
+  function classNames() {
+    var a = [], i;
+    for (i = 0; i < state.classes.length; i++) a.push(state.classes[i].name);
+    return a;
+  }
+  function getClass(name) {
+    for (var i = 0; i < state.classes.length; i++)
+      if (state.classes[i].name === name) return state.classes[i];
+    return null;
+  }
+  function renderClassSelects() {
+    var names = classNames(), html = "", i;
+    if (names.length === 0) html = '<option value="">— додайте клас на вкладці «Класи» —</option>';
+    else for (i = 0; i < names.length; i++) html += '<option value="' + esc(names[i]) + '">' + esc(names[i]) + "</option>";
+    var keepJ = $("jClass").value, keepL = $("lClass").value, keepK = $("kClass").value;
+    $("jClass").innerHTML = html; $("lClass").innerHTML = html; $("kClass").innerHTML = html;
+    if (keepJ && names.indexOf(keepJ) !== -1) $("jClass").value = keepJ;
+    if (keepL && names.indexOf(keepL) !== -1) $("lClass").value = keepL;
+    if (keepK && names.indexOf(keepK) !== -1) $("kClass").value = keepK;
+  }
+  function renderClassList() {
+    var out = "", i;
+    for (i = 0; i < state.classes.length; i++) {
+      out += '<div class="listline"><b>' + esc(state.classes[i].name) + "</b> — " +
+        state.classes[i].students.length + " учнів" +
+        ' <button class="btn ghost" data-del="' + i + '">видалити</button>' +
+        ' <button class="btn ghost" style="color:#2456A6" data-edit="' + i + '">редагувати</button></div>';
+    }
+    if (!out) out = '<div class="hint">Поки що порожньо. Додайте перший клас вище.</div>';
+    $("clsList").innerHTML = out;
+    var btns = $("clsList").getElementsByTagName("button"), j;
+    for (j = 0; j < btns.length; j++) {
+      btns[j].onclick = (function (b) {
+        return function () {
+          var d = b.getAttribute("data-del"), e = b.getAttribute("data-edit");
+          if (d !== null) {
+            var nm = state.classes[Number(d)].name;
+            if (confirm("Видалити клас «" + nm + "» разом із журналом та уроками?")) {
+              delete state.journal[nm]; delete state.plans[nm]; delete state.ktp[nm];
+              state.classes.splice(Number(d), 1);
+              save(); renderClassList(); renderClassSelects(); renderJournal(); renderLessons(); renderKtp();
+            }
+          } else if (e !== null) {
+            var c = state.classes[Number(e)];
+            $("clsName").value = c.name;
+            $("clsStudents").value = c.students.join("\n");
+            activate("p-class");
+            window.scrollTo(0, 0);
+          }
+        };
+      })(btns[j]);
+    }
+  }
+  $("btnClsSave").onclick = function () {
+    var name = trim($("clsName").value);
+    var lines = $("clsStudents").value.split("\n");
+    var students = [], i, s;
+    for (i = 0; i < lines.length; i++) { s = trim(lines[i]); if (s) students.push(s); }
+    if (!name) { alert("Вкажіть назву класу."); return; }
+    if (students.length === 0) { alert("Додайте хоча б одного учня."); return; }
+    var ex = getClass(name);
+    if (ex) ex.students = students;
+    else state.classes.push({ name: name, students: students });
+    save();
+    $("clsName").value = ""; $("clsStudents").value = "";
+    renderClassList(); renderClassSelects(); renderJournal(); renderLessons();
+    alert("Клас «" + name + "» збережено.");
+  };
+
+  /* ---------- журнал ---------- */
+  function jData(name) {
+    if (!state.journal[name]) state.journal[name] = { cols: [], marks: {} };
+    return state.journal[name];
+  }
+  function markClass(v) {
+    if (v === "н" || v === "Н") return "mark absent";
+    var n = Number(v);
+    if (n >= 10) return "mark good";
+    return "mark";
+  }
+  function avgFor(j, student) {
+    var m = j.marks[student] || [], sum = 0, cnt = 0, i, n;
+    for (i = 0; i < j.cols.length; i++) {
+      n = Number(m[i]);
+      if (m[i] !== undefined && m[i] !== "" && !isNaN(n) && n > 0) { sum += n; cnt++; }
+    }
+    if (!cnt) return "";
+    return (Math.round((sum / cnt) * 10) / 10).toString();
+  }
+  function renderJournal() {
+    var name = $("jClass").value;
+    var c = name ? getClass(name) : null;
+    if (!c) { $("jTable").innerHTML = '<div class="hint">Оберіть клас.</div>'; return; }
+    var j = jData(name), i, k;
+    var html = '<table class="journal"><tr><th class="namecol">Учень</th>';
+    for (k = 0; k < j.cols.length; k++)
+      html += '<th data-col="' + k + '">' + esc(j.cols[k]) + "</th>";
+    html += '<th class="avg">СБ</th></tr>';
+    for (i = 0; i < c.students.length; i++) {
+      var st = c.students[i];
+      var m = j.marks[st] || [];
+      html += '<tr><td class="namecol">' + (i + 1) + ". " + esc(st) + "</td>";
+      for (k = 0; k < j.cols.length; k++) {
+        var v = (m[k] === undefined) ? "" : m[k];
+        html += '<td class="' + markClass(v) + '" data-s="' + esc(st) + '" data-c="' + k + '">' + esc(v) + "</td>";
+      }
+      html += '<td class="avg">' + avgFor(j, st) + "</td></tr>";
+    }
+    html += "</table>";
+    $("jTable").innerHTML = html;
+
+    var tds = $("jTable").getElementsByTagName("td"), t;
+    for (t = 0; t < tds.length; t++) {
+      if (tds[t].className.indexOf("mark") === -1) continue;
+      tds[t].onclick = (function (td) {
+        return function () {
+          var st = td.getAttribute("data-s"), ci = Number(td.getAttribute("data-c"));
+          var cur = (j.marks[st] && j.marks[st][ci] !== undefined) ? j.marks[st][ci] : "";
+          var v = prompt("Оцінка для: " + st + "\n(1–12, «н» — відсутній, порожньо — стерти)", cur);
+          if (v === null) return;
+          v = trim(v);
+          if (v !== "" && v !== "н" && v !== "Н") {
+            var n = Number(v);
+            if (isNaN(n) || n < 1 || n > 12) { alert("Введіть число від 1 до 12 або «н»."); return; }
+            v = String(Math.round(n));
+          }
+          if (v === "Н") v = "н";
+          if (!j.marks[st]) j.marks[st] = [];
+          j.marks[st][ci] = v;
+          save(); renderJournal();
+        };
+      })(tds[t]);
+    }
+    var ths = $("jTable").getElementsByTagName("th"), h;
+    for (h = 0; h < ths.length; h++) {
+      if (ths[h].getAttribute("data-col") === null) continue;
+      ths[h].onclick = (function (th) {
+        return function () {
+          var ci = Number(th.getAttribute("data-col"));
+          var v = prompt("Підпис колонки (дата або тема).\nПорожній ввід — видалити колонку разом з оцінками.", j.cols[ci]);
+          if (v === null) return;
+          v = trim(v);
+          if (v === "") {
+            if (!confirm("Видалити колонку «" + j.cols[ci] + "»?")) return;
+            j.cols.splice(ci, 1);
+            for (var s in j.marks) if (j.marks.hasOwnProperty(s)) j.marks[s].splice(ci, 1);
+          } else j.cols[ci] = v;
+          save(); renderJournal();
+        };
+      })(ths[h]);
+    }
+  }
+  $("jClass").onchange = function () { $("jExportBox").style.display = "none"; renderJournal(); };
+  $("btnJCol").onclick = function () {
+    var name = $("jClass").value;
+    if (!name) { alert("Спочатку додайте клас."); return; }
+    var today = new Date();
+    var def = (today.getDate() < 10 ? "0" : "") + today.getDate() + "." +
+              (today.getMonth() < 9 ? "0" : "") + (today.getMonth() + 1);
+    var v = prompt("Підпис колонки (дата уроку або тема):", def);
+    if (v === null) return;
+    v = trim(v); if (!v) return;
+    jData(name).cols.push(v);
+    save(); renderJournal();
+  };
+  $("btnJExport").onclick = function () {
+    var name = $("jClass").value;
+    var c = name ? getClass(name) : null;
+    if (!c) return;
+    var j = jData(name), i, k, row;
+    var lines = [];
+    row = ["Учень"];
+    for (k = 0; k < j.cols.length; k++) row.push(j.cols[k]);
+    row.push("Середній бал");
+    lines.push(row.join(";"));
+    for (i = 0; i < c.students.length; i++) {
+      var st = c.students[i], m = j.marks[st] || [];
+      row = [st];
+      for (k = 0; k < j.cols.length; k++) row.push(m[k] === undefined ? "" : m[k]);
+      row.push(avgFor(j, st));
+      lines.push(row.join(";"));
+    }
+    $("jExportText").value = lines.join("\n");
+    $("jExportBox").style.display = "block";
+  };
+
+  /* ---------- уроки та ДЗ ---------- */
+  function lData(name) {
+    if (!state.plans[name]) state.plans[name] = [];
+    return state.plans[name];
+  }
+  function renderLessons() {
+    var name = $("lClass").value;
+    if (!name) { $("lList").innerHTML = '<div class="hint">Оберіть клас.</div>'; return; }
+    var arr = lData(name), out = "", i;
+    for (i = arr.length - 1; i >= 0; i--) {
+      var L = arr[i];
+      out += '<div class="lesson' + (L.done ? " done" : "") + '">' +
+        '<span class="ldate">' + esc(L.date || "без дати") + "</span>" +
+        '<div class="ltopic">' + esc(L.topic) + "</div>" +
+        (L.hw ? '<div class="lhw"><b>Д/З:</b> ' + esc(L.hw) + "</div>" : "") +
+        (L.note ? '<div class="lnote">' + esc(L.note) + "</div>" : "") +
+        '<div style="margin-top:8px;">' +
+        '<button class="btn secondary" style="padding:8px 12px; font-size:14px;" data-tg="' + i + '">' +
+          (L.done ? "↩ не проведено" : "✓ проведено") + "</button>" +
+        '<button class="btn ghost" data-rm="' + i + '">видалити</button>' +
+        "</div></div>";
+    }
+    if (!out) out = '<div class="hint">Уроків ще немає — додайте перший вище.</div>';
+    $("lList").innerHTML = out;
+    var btns = $("lList").getElementsByTagName("button"), b;
+    for (b = 0; b < btns.length; b++) {
+      btns[b].onclick = (function (bt) {
+        return function () {
+          var tg = bt.getAttribute("data-tg"), rm = bt.getAttribute("data-rm");
+          var arr2 = lData($("lClass").value);
+          if (tg !== null) { arr2[Number(tg)].done = !arr2[Number(tg)].done; }
+          else if (rm !== null) {
+            if (!confirm("Видалити цей урок зі списку?")) return;
+            arr2.splice(Number(rm), 1);
+          }
+          save(); renderLessons();
+        };
+      })(btns[b]);
+    }
+  }
+  $("lClass").onchange = renderLessons;
+  $("btnLAdd").onclick = function () {
+    var name = $("lClass").value;
+    if (!name) { alert("Спочатку додайте клас."); return; }
+    var topic = trim($("lTopic").value);
+    if (!topic) { alert("Вкажіть тему уроку."); return; }
+    lData(name).push({
+      date: trim($("lDate").value),
+      topic: topic,
+      hw: trim($("lHw").value),
+      note: trim($("lNote").value),
+      done: false
+    });
+    save();
+    $("lTopic").value = ""; $("lHw").value = ""; $("lNote").value = "";
+    renderLessons();
+  };
+
+  /* ---------- КТП ---------- */
+  function kData(name) {
+    if (!state.ktp[name]) state.ktp[name] = [];
+    return state.ktp[name];
+  }
+  function csvCell(s) {
+    s = String(s);
+    if (s.indexOf(";") !== -1 || s.indexOf('"') !== -1)
+      s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function fmtD(dt) {
+    return (dt.getDate() < 10 ? "0" : "") + dt.getDate() + "." +
+           (dt.getMonth() < 9 ? "0" : "") + (dt.getMonth() + 1);
+  }
+  function renderKtp() {
+    var name = $("kClass").value;
+    if (!name) { $("kTable").innerHTML = '<div class="hint">Оберіть клас.</div>'; return; }
+    var arr = kData(name), i, num = 0, total = 0, done = 0, out;
+    for (i = 0; i < arr.length; i++)
+      if (arr[i].type !== "section") { total++; if (arr[i].done) done++; }
+    if (arr.length === 0) {
+      $("kTable").innerHTML = '<div class="hint">КТП порожнє — вставте список тем вище.</div>';
+      return;
+    }
+    out = '<div class="hint" style="margin-bottom:8px;">Проведено ' + done + " з " + total +
+      " уроків. Торкніться дати чи теми, щоб змінити; ✓ — позначити проведеним.</div>";
+    out += '<table class="ktp">';
+    for (i = 0; i < arr.length; i++) {
+      var r = arr[i];
+      if (r.type === "section") {
+        out += '<tr class="ksec"><td colspan="3" data-si="' + i + '">' + esc(r.topic) + "</td>" +
+          '<td class="kact"><button class="btn ghost" data-rm="' + i + '">×</button></td></tr>';
+      } else {
+        num++;
+        out += "<tr" + (r.done ? ' class="kdone"' : "") + ">" +
+          '<td class="knum">' + num + "</td>" +
+          '<td class="kdate" data-di="' + i + '">' + esc(r.date || "—") + "</td>" +
+          '<td class="ktopic" data-ti="' + i + '">' + esc(r.topic) + "</td>" +
+          '<td class="kact">' +
+          '<button class="btn ghost" style="color:#3A7D44" data-tg="' + i + '">' + (r.done ? "↩" : "✓") + "</button>" +
+          '<button class="btn ghost" data-rm="' + i + '">×</button></td></tr>';
+      }
+    }
+    out += "</table>";
+    $("kTable").innerHTML = out;
+
+    var arr2 = arr;
+    var tds = $("kTable").getElementsByTagName("td"), t;
+    for (t = 0; t < tds.length; t++) {
+      var di = tds[t].getAttribute("data-di"),
+          ti = tds[t].getAttribute("data-ti"),
+          si = tds[t].getAttribute("data-si");
+      if (di !== null) {
+        tds[t].onclick = (function (i2) {
+          return function () {
+            var v = prompt("Дата уроку (напр. 08.09), порожньо — прибрати:", arr2[i2].date || "");
+            if (v === null) return;
+            arr2[i2].date = trim(v);
+            save(); renderKtp();
+          };
+        })(Number(di));
+      } else if (ti !== null) {
+        tds[t].onclick = (function (i2) {
+          return function () {
+            var v = prompt("Тема уроку:", arr2[i2].topic);
+            if (v === null) return;
+            v = trim(v); if (!v) return;
+            arr2[i2].topic = v;
+            save(); renderKtp();
+          };
+        })(Number(ti));
+      } else if (si !== null) {
+        tds[t].onclick = (function (i2) {
+          return function () {
+            var v = prompt("Назва розділу:", arr2[i2].topic);
+            if (v === null) return;
+            v = trim(v); if (!v) return;
+            arr2[i2].topic = v;
+            save(); renderKtp();
+          };
+        })(Number(si));
+      }
+    }
+    var btns = $("kTable").getElementsByTagName("button"), b;
+    for (b = 0; b < btns.length; b++) {
+      btns[b].onclick = (function (bt) {
+        return function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          var tg = bt.getAttribute("data-tg"), rm = bt.getAttribute("data-rm");
+          if (tg !== null) arr2[Number(tg)].done = !arr2[Number(tg)].done;
+          else if (rm !== null) {
+            var r = arr2[Number(rm)];
+            var what = r.type === "section" ? "розділ «" + r.topic + "»" : "урок «" + r.topic + "»";
+            if (!confirm("Видалити " + what + "?")) return;
+            arr2.splice(Number(rm), 1);
+          }
+          save(); renderKtp();
+        };
+      })(btns[b]);
+    }
+  }
+  $("kClass").onchange = function () { $("kExportBox").style.display = "none"; renderKtp(); };
+  $("btnKBulk").onclick = function () {
+    var name = $("kClass").value;
+    if (!name) { alert("Спочатку додайте клас на вкладці «Класи»."); return; }
+    var lines = $("kBulk").value.split("\n"), arr = kData(name), i, s, added = 0;
+    for (i = 0; i < lines.length; i++) {
+      s = trim(lines[i]); if (!s) continue;
+      if (s.charAt(0) === "#")
+        arr.push({ type: "section", topic: trim(s.replace(/^#+\s*/, "")) });
+      else
+        arr.push({ type: "lesson", date: "", topic: s, done: false });
+      added++;
+    }
+    if (!added) { alert("Вставте теми — по одній у рядку."); return; }
+    $("kBulk").value = "";
+    save(); renderKtp();
+  };
+  $("btnKAdd").onclick = function () {
+    var name = $("kClass").value;
+    if (!name) { alert("Спочатку додайте клас."); return; }
+    var v = prompt("Тема уроку:");
+    if (v === null) return;
+    v = trim(v); if (!v) return;
+    kData(name).push({ type: "lesson", date: "", topic: v, done: false });
+    save(); renderKtp();
+  };
+  $("btnKSection").onclick = function () {
+    var name = $("kClass").value;
+    if (!name) { alert("Спочатку додайте клас."); return; }
+    var v = prompt("Назва розділу:");
+    if (v === null) return;
+    v = trim(v); if (!v) return;
+    kData(name).push({ type: "section", topic: v });
+    save(); renderKtp();
+  };
+  $("btnKDates").onclick = function () {
+    var name = $("kClass").value;
+    if (!name) { alert("Спочатку додайте клас."); return; }
+    var arr = kData(name);
+    var sv = trim($("kStart").value);
+    var m = sv.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (!m) { alert("Вкажіть дату початку у форматі дд.мм.рррр, напр. 01.09.2026"); return; }
+    var dt = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    var days = [], d;
+    for (d = 0; d < 5; d++) if ($("kd" + d).checked) days.push(d + 1);
+    if (days.length === 0) { alert("Позначте дні тижня, коли є уроки в цьому класі."); return; }
+    var onlyEmpty = $("kOnlyEmpty").checked;
+    var idx = 0;
+    function nextIdx() {
+      while (idx < arr.length && (arr[idx].type === "section" || (onlyEmpty && arr[idx].date))) idx++;
+      return idx < arr.length;
+    }
+    if (!nextIdx()) { alert("Немає рядків для заповнення дат."); return; }
+    if (!onlyEmpty && !confirm("Перезаписати всі наявні дати?")) return;
+    var guard = 0;
+    while (guard < 3000) {
+      guard++;
+      if (days.indexOf(dt.getDay()) !== -1) {
+        arr[idx].date = fmtD(dt);
+        idx++;
+        if (!nextIdx()) break;
+      }
+      dt.setDate(dt.getDate() + 1);
+    }
+    save(); renderKtp();
+  };
+  $("btnKExport").onclick = function () {
+    var name = $("kClass").value;
+    if (!name) return;
+    var arr = kData(name), lines = [], i, num = 0;
+    lines.push("№;Дата;Тема;Проведено");
+    for (i = 0; i < arr.length; i++) {
+      var r = arr[i];
+      if (r.type === "section")
+        lines.push(";;" + csvCell(r.topic) + ";");
+      else {
+        num++;
+        lines.push(num + ";" + csvCell(r.date || "") + ";" + csvCell(r.topic) + ";" + (r.done ? "так" : ""));
+      }
+    }
+    $("kExportText").value = lines.join("\n");
+    $("kExportBox").style.display = "block";
+  };
+
+  /* ---------- розклад ---------- */
+  var DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт"];
+  function renderSched() {
+    var todayIdx = new Date().getDay() - 1; // 0=Пн
+    var html = "<tr><th></th>", d, l;
+    for (d = 0; d < 5; d++) html += "<th>" + DAYS[d] + "</th>";
+    html += "</tr>";
+    for (l = 0; l < 8; l++) {
+      html += '<tr><td class="num">' + (l + 1) + "</td>";
+      for (d = 0; d < 5; d++) {
+        html += '<td' + (d === todayIdx ? ' class="today"' : "") + '>' +
+          '<input type="text" data-d="' + d + '" data-l="' + l + '" value="' +
+          esc(state.sched[d][l]).replace(/"/g, "&quot;") + '" placeholder=""></td>';
+      }
+      html += "</tr>";
+    }
+    $("schedTable").innerHTML = html;
+    var inps = $("schedTable").getElementsByTagName("input"), i;
+    for (i = 0; i < inps.length; i++) {
+      inps[i].onchange = (function (inp) {
+        return function () {
+          state.sched[Number(inp.getAttribute("data-d"))][Number(inp.getAttribute("data-l"))] = inp.value;
+          save();
+        };
+      })(inps[i]);
+    }
+  }
+
+  /* ---------- нотатки ---------- */
+  var notesTimer = null;
+  $("notesArea").oninput = function () {
+    if (notesTimer) clearTimeout(notesTimer);
+    notesTimer = setTimeout(function () {
+      state.notes = $("notesArea").value; save();
+    }, 400);
+  };
+
+  /* ---------- резервна копія ---------- */
+  function applyRestored(s) {
+    state = s; load(); save();
+    renderClassSelects(); renderClassList(); renderJournal(); renderLessons(); renderKtp(); renderSched();
+    $("notesArea").value = state.notes;
+  }
+  $("btnFileSave").onclick = function () {
+    var data = JSON.stringify(state);
+    var a = document.createElement("a");
+    var ok = ("download" in a) && window.Blob && window.URL && URL.createObjectURL;
+    if (!ok) {
+      $("backupBox").style.display = "block";
+      $("backupText").value = data;
+      alert("Цей браузер не вміє зберігати файли. Скористайтеся текстовою копією — вона вже показана нижче.");
+      return;
+    }
+    var d = new Date();
+    var nm = "vchytel-kopiya-" + d.getFullYear() + "-" +
+      (d.getMonth() < 9 ? "0" : "") + (d.getMonth() + 1) + "-" +
+      (d.getDate() < 10 ? "0" : "") + d.getDate() + ".json";
+    var blob = new Blob([data], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    a.href = url; a.download = nm;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+  };
+  $("btnFileLoad").onclick = function () { $("fileInput").click(); };
+  $("fileInput").onchange = function () {
+    var f = this.files && this.files[0];
+    var inp = this;
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var s = JSON.parse(r.result);
+        if (!s || !s.classes) throw new Error("bad");
+        if (!confirm("Замінити всі поточні дані даними з файлу «" + f.name + "»?")) { inp.value = ""; return; }
+        applyRestored(s);
+        alert("Дані відновлено з файлу.");
+      } catch (e) {
+        alert("Не вдалося прочитати файл. Перевірте, що це файл копії (.json) з цього застосунку.");
+      }
+      inp.value = "";
+    };
+    r.onerror = function () { alert("Помилка читання файлу."); inp.value = ""; };
+    r.readAsText(f, "utf-8");
+  };
+  $("btnBackup").onclick = function () {
+    $("backupBox").style.display = "block";
+    $("backupText").value = JSON.stringify(state);
+  };
+  $("btnRestore").onclick = function () {
+    $("backupBox").style.display = "block";
+    var txt = trim($("backupText").value);
+    if (!txt) { alert("Вставте текст копії у поле нижче та натисніть ще раз."); return; }
+    try {
+      var s = JSON.parse(txt);
+      if (!s || !s.classes) throw new Error("bad");
+      if (!confirm("Замінити всі поточні дані даними з копії?")) return;
+      applyRestored(s);
+      alert("Дані відновлено.");
+    } catch (e) { alert("Не вдалося прочитати копію. Перевірте, що текст вставлено повністю."); }
+  };
+
+  /* ---------- старт ---------- */
+  load();
+  renderClassSelects();
+  renderClassList();
+  renderJournal();
+  renderLessons();
+  renderKtp();
+  renderSched();
+  $("notesArea").value = state.notes;
+
+  /* офлайн-режим: service worker (працює лише при відкритті з сервера) */
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    try { navigator.serviceWorker.register("sw.js"); } catch (e) {}
+  }
+})();
+</script>
+</body>
+</html>
