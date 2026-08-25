@@ -1,12 +1,13 @@
-/* Офлайн-кеш застосунку. Щоб оновити застосунок на пристроях,
-   змініть номер версії нижче (v3 -> v4) разом із заміною index.html. */
-var CACHE = "teacher-app-v3";
-var FILES = ["./", "./index.html"];
+/* Офлайн-кеш: стратегія «спочатку мережа».
+   Онлайн — завжди свіжа версія із сервера (жодних ручних оновлень версій),
+   офлайн — застосунок відкривається з кешу. */
+var CACHE = "teacher-app-live";
 
 self.addEventListener("install", function (e) {
   e.waitUntil(
-    caches.open(CACHE).then(function (c) { return c.addAll(FILES); })
-      .then(function () { return self.skipWaiting(); })
+    caches.open(CACHE).then(function (c) {
+      return c.addAll(["./", "./index.html"]);
+    }).then(function () { return self.skipWaiting(); })
   );
 });
 
@@ -22,18 +23,17 @@ self.addEventListener("activate", function (e) {
 
 self.addEventListener("fetch", function (e) {
   if (e.request.method !== "GET") return;
-  /* запити синхронізації ніколи не кешуються */
+  /* запити синхронізації та живий канал не чіпаємо */
   if (e.request.url.indexOf("/api/") !== -1) return;
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then(function (r) {
-      if (r) return r;
-      return fetch(e.request).then(function (resp) {
-        var copy = resp.clone();
-        caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
-        return resp;
-      });
+    fetch(e.request).then(function (resp) {
+      var copy = resp.clone();
+      caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
+      return resp;
     }).catch(function () {
-      return caches.match("./index.html");
+      return caches.match(e.request, { ignoreSearch: true }).then(function (r) {
+        return r || caches.match("./index.html");
+      });
     })
   );
 });

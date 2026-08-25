@@ -809,7 +809,20 @@ table.sched td.today { background:#FFF6D9; }
   function schedulePush() {
     if (!canSync()) return;
     if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(function () { pushToServer(true); }, 2500);
+    pushTimer = setTimeout(function () { pushToServer(true); }, 1000);
+  }
+  /* живий канал: сервер повідомляє про зміни з інших пристроїв */
+  var es = null;
+  function startEvents() {
+    if (!canSync() || !window.EventSource) return;
+    if (es) { try { es.close(); } catch (e) {} }
+    es = new EventSource("/api/events?key=" + encodeURIComponent(syncKey()));
+    es.onmessage = function (ev) {
+      try {
+        var d = JSON.parse(ev.data);
+        if ((d.updatedAt || 0) > (state.updatedAt || 0)) pullFromServer(false);
+      } catch (e) {}
+    };
   }
   function apiReq(method, cb) {
     var xhr = new XMLHttpRequest();
@@ -860,9 +873,10 @@ table.sched td.today { background:#FFF6D9; }
   $("btnSyncSaveKey").onclick = function () {
     var k = trim($("syncKeyInput").value);
     try { localStorage.setItem(SYNCKEY_LS, k); } catch (e) {}
-    if (!k) { setSyncStatus("Ключ очищено — синхронізацію вимкнено"); return; }
+    if (!k) { setSyncStatus("Ключ очищено — синхронізацію вимкнено"); if (es) { try { es.close(); } catch (e) {} es = null; } return; }
     setSyncStatus("Ключ збережено, перевіряю сервер…");
     pullFromServer(false);
+    startEvents();
   };
   $("btnSyncPush").onclick = function () { pushToServer(false); };
   $("btnSyncPull").onclick = function () { pullFromServer(true); };
@@ -967,6 +981,7 @@ table.sched td.today { background:#FFF6D9; }
     setSyncStatus("Синхронізація працює лише при відкритті застосунку із сервера");
   } else if (canSync()) {
     pullFromServer(false);
+    startEvents();
   } else {
     setSyncStatus("Введіть ключ, щоб усі пристрої бачили спільні дані");
   }
