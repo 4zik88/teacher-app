@@ -287,19 +287,23 @@ table.sched td.today { background:#FFF6D9; }
   var KEY = "informTeacherHelper_v1";
   var state = { classes: [], journal: {}, plans: {}, notes: "", sched: null };
 
-  function load() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) { var s = JSON.parse(raw); if (s && s.classes) state = s; }
-    } catch (e) {}
+  function ensureDefaults() {
     if (!state.journal) state.journal = {};
     if (!state.plans) state.plans = {};
     if (!state.ktp) state.ktp = {};
+    if (!state.classes) state.classes = [];
     if (typeof state.notes !== "string") state.notes = "";
     if (!state.sched) {
       state.sched = [];
       for (var d = 0; d < 5; d++) { var r = []; for (var l = 0; l < 8; l++) r.push(""); state.sched.push(r); }
     }
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var s = JSON.parse(raw); if (s && s.classes) state = s; }
+    } catch (e) {}
+    ensureDefaults();
   }
   function save() {
     state.updatedAt = Date.now();
@@ -947,7 +951,9 @@ table.sched td.today { background:#FFF6D9; }
 
   /* ---------- резервна копія ---------- */
   function applyRestored(s) {
-    state = s; load(); save();
+    state = s;
+    ensureDefaults();
+    save();
     renderClassSelects(); renderClassList(); renderJournal(); renderLessons(); renderKtp(); renderSched();
     $("notesArea").value = state.notes;
   }
