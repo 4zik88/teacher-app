@@ -1,6 +1,6 @@
 /* Офлайн-кеш застосунку. Щоб оновити застосунок на пристроях,
-   змініть номер версії нижче (v2 -> v3) разом із заміною index.html. */
-var CACHE = "teacher-app-v2";
+   змініть номер версії нижче (v3 -> v4) разом із заміною index.html. */
+var CACHE = "teacher-app-v3";
 var FILES = ["./", "./index.html"];
 
 self.addEventListener("install", function (e) {

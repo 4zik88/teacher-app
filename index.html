@@ -867,6 +867,24 @@ table.sched td.today { background:#FFF6D9; }
   $("btnSyncPush").onclick = function () { pushToServer(false); };
   $("btnSyncPull").onclick = function () { pullFromServer(true); };
 
+  /* автопідтягування: при поверненні у застосунок і раз на хвилину */
+  var lastAutoPull = 0;
+  function autoPull() {
+    if (!canSync()) return;
+    var now = Date.now();
+    if (now - lastAutoPull < 10000) return; /* не частіше, ніж раз на 10 с */
+    lastAutoPull = now;
+    pullFromServer(false);
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) autoPull();
+  });
+  window.addEventListener("focus", autoPull);
+  window.addEventListener("pageshow", autoPull);
+  setInterval(function () {
+    if (!document.hidden) autoPull();
+  }, 60000);
+
   /* ---------- резервна копія ---------- */
   function applyRestored(s) {
     state = s; load(); save();
