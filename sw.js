@@ -1,6 +1,6 @@
 /* Офлайн-кеш застосунку. Щоб оновити застосунок на пристроях,
-   змініть номер версії нижче (v1 -> v2) разом із заміною index.html. */
-var CACHE = "teacher-app-v1";
+   змініть номер версії нижче (v2 -> v3) разом із заміною index.html. */
+var CACHE = "teacher-app-v2";
 var FILES = ["./", "./index.html"];
 
 self.addEventListener("install", function (e) {
@@ -22,6 +22,8 @@ self.addEventListener("activate", function (e) {
 
 self.addEventListener("fetch", function (e) {
   if (e.request.method !== "GET") return;
+  /* запити синхронізації ніколи не кешуються */
+  if (e.request.url.indexOf("/api/") !== -1) return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(function (r) {
       if (r) return r;

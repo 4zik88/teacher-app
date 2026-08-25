@@ -251,6 +251,17 @@ table.sched td.today { background:#FFF6D9; }
       <div id="clsList"></div>
     </div>
     <div class="card">
+      <label>Синхронізація між пристроями</label>
+      <div class="row">
+        <input type="text" id="syncKeyInput" placeholder="Ключ синхронізації (однаковий на всіх пристроях)">
+      </div>
+      <button class="btn" id="btnSyncSaveKey">Зберегти ключ</button>
+      <button class="btn secondary" id="btnSyncPush">Надіслати на сервер</button>
+      <button class="btn secondary" id="btnSyncPull">Отримати з сервера</button>
+      <div class="hint" id="syncStatus"></div>
+      <div class="hint">Ключ має збігатися зі змінною <span class="mono">SYNC_KEY</span> на Railway. Після збереження ключа застосунок сам надсилає кожну зміну на сервер і під час запуску підтягує новіші дані.</div>
+    </div>
+    <div class="card">
       <label>Резервна копія</label>
       <div class="row">
         <button class="btn" id="btnFileSave">Зберегти у файл</button>
@@ -290,7 +301,11 @@ table.sched td.today { background:#FFF6D9; }
       for (var d = 0; d < 5; d++) { var r = []; for (var l = 0; l < 8; l++) r.push(""); state.sched.push(r); }
     }
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function save() {
+    state.updatedAt = Date.now();
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    schedulePush();
+  }
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
   function trim(s) { return String(s).replace(/^\s+|\s+$/g, ""); }
@@ -777,6 +792,81 @@ table.sched td.today { background:#FFF6D9; }
     }, 400);
   };
 
+  /* ---------- синхронізація ---------- */
+  var SYNCKEY_LS = "informTeacherSyncKey";
+  var pushTimer = null;
+  function syncKey() {
+    try { return localStorage.getItem(SYNCKEY_LS) || ""; } catch (e) { return ""; }
+  }
+  function canSync() {
+    return location.protocol.indexOf("http") === 0 && syncKey() !== "";
+  }
+  function setSyncStatus(msg, kind) {
+    var el = $("syncStatus");
+    el.innerHTML = esc(msg);
+    el.style.color = kind === "err" ? "#C94F4F" : (kind === "ok" ? "#3A7D44" : "#5A6B7C");
+  }
+  function schedulePush() {
+    if (!canSync()) return;
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(function () { pushToServer(true); }, 2500);
+  }
+  function apiReq(method, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, "/api/data", true);
+    xhr.setRequestHeader("X-Sync-Key", syncKey());
+    if (method === "POST") xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      var resp = null;
+      try { resp = JSON.parse(xhr.responseText); } catch (e) {}
+      cb(xhr.status, resp);
+    };
+    xhr.send(method === "POST" ? JSON.stringify({ data: state }) : null);
+  }
+  function pushToServer(quiet) {
+    if (!canSync()) { if (!quiet) alert("Спочатку введіть і збережіть ключ синхронізації."); return; }
+    apiReq("POST", function (status) {
+      if (status === 200) setSyncStatus("Надіслано на сервер о " + new Date().toLocaleTimeString(), "ok");
+      else if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
+      else if (status === 500) setSyncStatus("На сервері не задано SYNC_KEY", "err");
+      else setSyncStatus("Немає зв’язку із сервером — зміни збережено локально", quiet ? "" : "err");
+    });
+  }
+  function pullFromServer(interactive) {
+    if (!canSync()) { if (interactive) alert("Спочатку введіть і збережіть ключ синхронізації."); return; }
+    apiReq("GET", function (status, resp) {
+      if (status === 200 && resp && resp.data && resp.data.classes) {
+        var srvT = resp.data.updatedAt || 0, locT = state.updatedAt || 0;
+        if (interactive) {
+          if (!confirm("Замінити дані на цьому пристрої даними із сервера?")) return;
+          applyRestored(resp.data);
+          setSyncStatus("Отримано з сервера", "ok");
+        } else if (srvT > locT) {
+          applyRestored(resp.data);
+          setSyncStatus("Оновлено з сервера", "ok");
+        } else {
+          setSyncStatus("Дані актуальні (синхронізовано)", "ok");
+          if (locT > srvT) pushToServer(true);
+        }
+      } else if (status === 404) {
+        setSyncStatus("На сервері ще немає даних — надсилаю поточні…");
+        pushToServer(true);
+      } else if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
+      else if (status === 500) setSyncStatus("На сервері не задано SYNC_KEY", "err");
+      else setSyncStatus("Немає зв’язку із сервером — працюємо локально");
+    });
+  }
+  $("btnSyncSaveKey").onclick = function () {
+    var k = trim($("syncKeyInput").value);
+    try { localStorage.setItem(SYNCKEY_LS, k); } catch (e) {}
+    if (!k) { setSyncStatus("Ключ очищено — синхронізацію вимкнено"); return; }
+    setSyncStatus("Ключ збережено, перевіряю сервер…");
+    pullFromServer(false);
+  };
+  $("btnSyncPush").onclick = function () { pushToServer(false); };
+  $("btnSyncPull").onclick = function () { pullFromServer(true); };
+
   /* ---------- резервна копія ---------- */
   function applyRestored(s) {
     state = s; load(); save();
@@ -852,6 +942,16 @@ table.sched td.today { background:#FFF6D9; }
   renderKtp();
   renderSched();
   $("notesArea").value = state.notes;
+
+  /* синхронізація при запуску */
+  $("syncKeyInput").value = syncKey();
+  if (location.protocol.indexOf("http") !== 0) {
+    setSyncStatus("Синхронізація працює лише при відкритті застосунку із сервера");
+  } else if (canSync()) {
+    pullFromServer(false);
+  } else {
+    setSyncStatus("Введіть ключ, щоб усі пристрої бачили спільні дані");
+  }
 
   /* офлайн-режим: service worker (працює лише при відкритті з сервера) */
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
