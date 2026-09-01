@@ -284,8 +284,10 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       <button class="btn" id="btnSyncSaveKey">Зберегти ключ</button>
       <button class="btn secondary" id="btnSyncPush">Надіслати на сервер</button>
       <button class="btn secondary" id="btnSyncPull">Отримати з сервера</button>
+      <button class="btn secondary" id="btnSyncCheck">Перевірити зв’язок</button>
       <div class="hint" id="syncStatus"></div>
       <div class="hint mono" id="syncInfo" style="margin-top:6px;"></div>
+      <div class="hint mono" id="syncDiag" style="margin-top:6px; white-space:pre-wrap;"></div>
       <div class="hint">Ключ має збігатися зі змінною <span class="mono">SYNC_KEY</span> на Railway. Після збереження ключа застосунок сам надсилає кожну зміну на сервер і під час запуску підтягує новіші дані.</div>
     </div>
     <div class="card">
@@ -1266,6 +1268,48 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     pullFromServer(false);
     startEvents();
   };
+  /* Порівнює цей пристрій із сервером і пояснює словами, що не так. */
+  function fmtWhen(ms) {
+    if (!ms) return "—";
+    var d = new Date(ms);
+    return (d.getDate() < 10 ? "0" : "") + d.getDate() + "." +
+      (d.getMonth() < 9 ? "0" : "") + (d.getMonth() + 1) + " " + d.toLocaleTimeString();
+  }
+  function names(arr) {
+    var a = [], i;
+    for (i = 0; arr && i < arr.length && i < 6; i++) a.push(arr[i].name);
+    if (arr && arr.length > 6) a.push("…");
+    return a.length ? a.join(", ") : "—";
+  }
+  function diagnose() {
+    var here = "Цей пристрій: ревізія " + localRev() + " · класів " + nClasses() +
+      " (" + names(state.classes) + ") · змінено " + fmtWhen(state.updatedAt) +
+      (isDirty() ? " · Є ненадіслані зміни" : "");
+    if (!syncKey()) { $("syncDiag").innerHTML = esc(here + "\nКлюч синхронізації не задано — цей пристрій працює сам по собі."); return; }
+    if (location.protocol.indexOf("http") !== 0) { $("syncDiag").innerHTML = esc(here + "\nЗастосунок відкрито не із сервера — синхронізація вимкнена."); return; }
+    $("syncDiag").innerHTML = esc(here + "\nПитаю сервер…");
+    apiReq("GET", null, function (status, resp) {
+      var out = here + "\n";
+      if (status === 403) { out += "Сервер: ключ не збігається з SYNC_KEY на Railway."; }
+      else if (status === 500) { out += "Сервер: на ньому не задано SYNC_KEY."; }
+      else if (status !== 200) { out += "Сервер: немає зв’язку (код " + status + ")."; }
+      else {
+        var srvRev = (resp && resp.rev) || 0;
+        var d = resp && resp.data;
+        var srvN = (d && d.classes) ? d.classes.length : 0;
+        out += "Сервер (" + location.host + "): ревізія " + srvRev + " · класів " + srvN +
+          " (" + names(d && d.classes) + ") · збережено " + (resp && resp.savedAt ? resp.savedAt.replace("T", " ").slice(0, 16) : "—") + "\n";
+        if (!d) out += "→ На сервері ще немає даних. Натисніть «Надіслати на сервер».";
+        else if (srvRev > localRev()) out += "→ Цей пристрій відстає. Натисніть «Отримати з сервера».";
+        else if (srvRev < localRev()) out += "→ Сервер відстає. Натисніть «Надіслати на сервер».";
+        else if (srvN !== nClasses() || (d.updatedAt || 0) !== (state.updatedAt || 0))
+          out += "→ Ревізія однакова, а дані різні. Натисніть «Надіслати на сервер».";
+        else out += "→ Усе зійшлося: цей пристрій і сервер однакові.";
+      }
+      $("syncDiag").innerHTML = esc(out);
+    });
+  }
+  $("btnSyncCheck").onclick = diagnose;
   $("btnSyncPush").onclick = function () { pushToServer(false, false); };
   $("btnSyncPull").onclick = function () { pullFromServer(true); };
 
