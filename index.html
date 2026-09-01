@@ -285,6 +285,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       <button class="btn secondary" id="btnSyncPush">Надіслати на сервер</button>
       <button class="btn secondary" id="btnSyncPull">Отримати з сервера</button>
       <div class="hint" id="syncStatus"></div>
+      <div class="hint mono" id="syncInfo" style="margin-top:6px;"></div>
       <div class="hint">Ключ має збігатися зі змінною <span class="mono">SYNC_KEY</span> на Railway. Після збереження ключа застосунок сам надсилає кожну зміну на сервер і під час запуску підтягує новіші дані.</div>
     </div>
     <div class="card">
@@ -1010,8 +1011,25 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     var el = $("syncStatus");
     el.innerHTML = esc(msg);
     el.style.color = kind === "err" ? "#C94F4F" : (kind === "ok" ? "#3A7D44" : "#5A6B7C");
+    renderSyncInfo();
   }
   function nClasses() { return (state.classes || []).length; }
+  /* Відбиток ключа — щоб порівняти пристрої, не показуючи сам ключ. */
+  function keyFp() {
+    var k = syncKey(), h = 0, i;
+    if (!k) return "не задано";
+    for (i = 0; i < k.length; i++) h = ((h << 5) - h + k.charCodeAt(i)) | 0;
+    return ("0000" + (h >>> 0).toString(36)).slice(-4);
+  }
+  /* Рядок для звірки двох пристроїв: сервер, ключ, ревізія мають збігатися. */
+  function renderSyncInfo() {
+    $("syncInfo").innerHTML = esc(
+      "сервер: " + (location.protocol.indexOf("http") === 0 ? location.host : "файл, без сервера") +
+      " · ключ: " + keyFp() +
+      " · ревізія тут: " + localRev() +
+      " · класів тут: " + nClasses() +
+      (isDirty() ? " · є ненадіслані зміни" : ""));
+  }
   function schedulePush() {
     if (!canSync()) return;
     if (pushTimer) clearTimeout(pushTimer);
@@ -1377,6 +1395,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   renderBells();
   renderSched();
   refreshConflictBtn();
+  renderSyncInfo();
   $("notesArea").value = state.notes;
 
   /* синхронізація при запуску */
