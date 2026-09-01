@@ -297,6 +297,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       <div class="row">
         <button class="btn secondary" id="btnBackup">Показати копію текстом</button>
         <button class="btn secondary" id="btnRestore">Відновити з тексту</button>
+        <button class="btn secondary" id="btnConflict" style="display:none;">Показати копію до злиття</button>
       </div>
       <div id="backupBox" style="display:none; margin-top:8px;">
         <textarea id="backupText" style="min-height:100px;" placeholder="Вставте сюди збережений раніше текст копії…"></textarea>
@@ -348,6 +349,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   function save() {
     state.updatedAt = Date.now();
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    setDirty(true);
     schedulePush();
   }
   function $(id) { return document.getElementById(id); }
@@ -821,14 +823,18 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       html += "</tr>";
     }
     $("schedTable").innerHTML = html;
-    var inps = $("schedTable").getElementsByTagName("input"), i;
+    var inps = $("schedTable").getElementsByTagName("input"), i, cellTimer = null;
     for (i = 0; i < inps.length; i++) {
-      inps[i].onchange = (function (inp) {
+      var h = (function (inp) {
         return function () {
           state.sched[Number(inp.getAttribute("data-d"))][Number(inp.getAttribute("data-l"))] = inp.value;
-          save();
+          if (cellTimer) clearTimeout(cellTimer);
+          cellTimer = setTimeout(save, 400);
         };
       })(inps[i]);
+      /* iPad часто не дає change, якщо піти з застосунку прямо з клавіатурою */
+      inps[i].oninput = h;
+      inps[i].onchange = h;
     }
   }
 
@@ -973,7 +979,10 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   /* ---------- синхронізація ---------- */
   var SYNCKEY_LS = "informTeacherSyncKey";
   var SYNCREV_LS = "informTeacherSyncRev";
+  var SYNCDIRTY_LS = "informTeacherSyncDirty";
+  var SYNCBASE_LS = "informTeacherSyncBase";
   var pushTimer = null;
+  var pushing = false;
   function syncKey() {
     try { return localStorage.getItem(SYNCKEY_LS) || ""; } catch (e) { return ""; }
   }
@@ -982,6 +991,17 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   }
   function setLocalRev(r) {
     try { localStorage.setItem(SYNCREV_LS, String(r || 0)); } catch (e) {}
+  }
+  /* «брудно» = є локальні зміни, які сервер ще не підтвердив.
+     Прапорець живе в localStorage, тому переживає перезапуск застосунку. */
+  function isDirty() {
+    try { return localStorage.getItem(SYNCDIRTY_LS) === "1"; } catch (e) { return false; }
+  }
+  function setDirty(v) {
+    try {
+      if (v) localStorage.setItem(SYNCDIRTY_LS, "1");
+      else localStorage.removeItem(SYNCDIRTY_LS);
+    } catch (e) {}
   }
   function canSync() {
     return location.protocol.indexOf("http") === 0 && syncKey() !== "";
@@ -1025,11 +1045,16 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   }
   function pushToServer(quiet, force) {
     if (!canSync()) { if (!quiet) alert("Спочатку введіть і збережіть ключ синхронізації."); return; }
+    if (pushing) { schedulePush(); return; }
+    pushing = true;
     var payload = { data: state };
     if (force) payload.force = true; else payload.baseRev = localRev();
     apiReq("POST", payload, function (status, resp) {
+      pushing = false;
       if (status === 200) {
         setLocalRev(resp && resp.rev);
+        setDirty(false);
+        setBase(state);
         setSyncStatus("Надіслано на сервер о " + new Date().toLocaleTimeString() +
           " (ревізія " + (resp && resp.rev) + ", класів: " + nClasses() + ")", "ok");
       } else if (status === 409) {
@@ -1037,12 +1062,125 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
           setSyncStatus("Сервер відхилив: на ньому є дані (класів: " +
             (resp.serverClasses || 0) + "), а тут порожньо. Натисніть «Отримати з сервера».", "err");
         } else {
-          setSyncStatus("На сервері є новіші зміни (ревізія " + (resp && resp.rev) +
-            "). Натисніть «Отримати з сервера», щоб їх забрати.", "err");
+          /* хтось випередив нас — зливаємо його зміни зі своїми */
+          setSyncStatus("На сервері є новіші зміни — об’єдную…");
+          resolveConflict();
         }
       } else if (status === 403) setSyncStatus("Невірний ключ синхронізації", "err");
       else if (status === 500) setSyncStatus("На сервері не задано SYNC_KEY", "err");
-      else setSyncStatus("Немає зв’язку із сервером — зміни збережено локально", quiet ? "" : "err");
+      else setSyncStatus("Немає зв’язку із сервером — зміни збережено, надішлю пізніше", quiet ? "" : "err");
+    });
+  }
+  /* ---- злиття змін із двох пристроїв ----
+     base — стан, на якому ми востаннє зійшлися із сервером. Порівнюючи з ним,
+     видно, що змінили саме ми, а що — інший пристрій, тож зберігається і те, і те. */
+  function getBase() {
+    try { var r = localStorage.getItem(SYNCBASE_LS); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  }
+  function setBase(o) {
+    try { localStorage.setItem(SYNCBASE_LS, JSON.stringify(o)); } catch (e) {}
+  }
+  function isObj(v) { return v && typeof v === "object" && !(v instanceof Array); }
+  function sameJson(a, b) {
+    try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; }
+  }
+  function namedList(a) {
+    if (!(a instanceof Array) || a.length === 0) return false;
+    for (var i = 0; i < a.length; i++)
+      if (!isObj(a[i]) || typeof a[i].name !== "string") return false;
+    return true;
+  }
+  function byName(a) {
+    var m = {}, i;
+    for (i = 0; a && i < a.length; i++) if (isObj(a[i]) && typeof a[i].name === "string") m[a[i].name] = a[i];
+    return m;
+  }
+  function mergeNamed(base, ours, theirs, oursNewer) {
+    var bm = byName(base), om = byName(ours), tm = byName(theirs), out = [], i, nm;
+    for (i = 0; i < ours.length; i++) {
+      nm = ours[i].name;
+      /* вони видалили, ми не змінювали — лишаємо видаленим */
+      if (!tm.hasOwnProperty(nm) && bm.hasOwnProperty(nm) && sameJson(om[nm], bm[nm])) continue;
+      out.push(merge3(bm[nm], om[nm], tm[nm], oursNewer));
+    }
+    for (i = 0; i < theirs.length; i++) {
+      nm = theirs[i].name;
+      if (om.hasOwnProperty(nm)) continue;
+      if (bm.hasOwnProperty(nm)) continue; /* це ми його видалили */
+      out.push(theirs[i]);
+    }
+    return out;
+  }
+  function merge3(base, ours, theirs, oursNewer) {
+    if (ours === undefined) return theirs;
+    if (theirs === undefined) return ours;
+    if (sameJson(ours, theirs)) return ours;
+    if (sameJson(ours, base)) return theirs;   /* змінили тільки вони */
+    if (sameJson(theirs, base)) return ours;   /* змінили тільки ми */
+    if (isObj(ours) && isObj(theirs)) {
+      var out = {}, k;
+      for (k in ours) {
+        if (!ours.hasOwnProperty(k)) continue;
+        /* вони видалили ключ, ми його не чіпали — лишаємо видаленим */
+        if (!theirs.hasOwnProperty(k) && base && base.hasOwnProperty(k) && sameJson(ours[k], base[k])) continue;
+        out[k] = merge3(base ? base[k] : undefined, ours[k], theirs[k], oursNewer);
+      }
+      for (k in theirs) {
+        if (!theirs.hasOwnProperty(k) || out.hasOwnProperty(k)) continue;
+        if (base && base.hasOwnProperty(k)) continue; /* це ми його видалили */
+        out[k] = theirs[k];
+      }
+      return out;
+    }
+    if ((ours instanceof Array) && (theirs instanceof Array)) {
+      /* списки з іменами (класи) зливаємо за іменем, а не за номером у списку —
+         інакше клас, доданий на другому пристрої, затерся б */
+      if (namedList(ours) && namedList(theirs)) return mergeNamed(base, ours, theirs, oursNewer);
+      var n = Math.max(ours.length, theirs.length), arr = [], i;
+      for (i = 0; i < n; i++)
+        arr.push(merge3(base ? base[i] : undefined, ours[i], theirs[i], oursNewer));
+      return arr;
+    }
+    return oursNewer ? ours : theirs;          /* обидва змінили те саме поле */
+  }
+  /* зливаємо наші зміни з серверними й віддаємо результат назад на сервер */
+  function reconcile(srvData, srvRev, tries) {
+    if (tries > 3) { setSyncStatus("Не вдалося узгодити зміни — натисніть «Отримати з сервера»", "err"); return; }
+    var oursNewer = (state.updatedAt || 0) >= ((srvData && srvData.updatedAt) || 0);
+    var merged = merge3(getBase(), state, srvData, oursNewer);
+    merged.updatedAt = Math.max(state.updatedAt || 0, (srvData && srvData.updatedAt) || 0);
+    stashLocal();
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+    applyRestored(merged);
+    refreshConflictBtn();
+    setLocalRev(srvRev);
+    pushMerged(srvRev, tries);
+  }
+  function pushMerged(baseRev, tries) {
+    pushing = true;
+    apiReq("POST", { data: state, baseRev: baseRev }, function (status, resp) {
+      pushing = false;
+      if (status === 200) {
+        setLocalRev(resp && resp.rev);
+        setDirty(false);
+        setBase(state);
+        setSyncStatus("Зміни з обох пристроїв об’єднано (ревізія " + (resp && resp.rev) +
+          ", класів: " + nClasses() + ")", "ok");
+      } else if (status === 409) {
+        /* нас знову випередили — беремо свіжі дані й зливаємо ще раз */
+        apiReq("GET", null, function (s2, r2) {
+          if (s2 === 200 && r2 && r2.data) reconcile(r2.data, (r2 && r2.rev) || 0, tries + 1);
+          else setSyncStatus("Немає зв’язку із сервером — спробую пізніше");
+        });
+      } else setSyncStatus("Немає зв’язку із сервером — зміни збережено, надішлю пізніше");
+    });
+  }
+  function resolveConflict() {
+    apiReq("GET", null, function (status, resp) {
+      if (status !== 200) { setSyncStatus("Немає зв’язку із сервером — спробую пізніше"); return; }
+      var srvData = resp && resp.data;
+      if (!srvData || !srvData.classes) { pushToServer(true, true); return; }
+      reconcile(srvData, (resp && resp.rev) || 0, 0);
     });
   }
   function pullFromServer(interactive) {
@@ -1076,22 +1214,29 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
         return;
       }
       if (srvRev > localRev()) {
+        /* є незакінчений локальний запис — не затираємо його даними сервера наосліп */
+        if (isDirty()) { reconcile(srvData, srvRev, 0); return; }
         applyRestoredFromServer(srvData, srvRev);
         setSyncStatus("Оновлено з сервера (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
       } else if (srvRev < localRev()) {
         /* сервер відкотився (напр. перезапуск без диска) — повертаємо свої дані */
         setSyncStatus("Сервер втратив дані — відновлюю з цього пристрою…");
         pushToServer(true, true);
+      } else if (isDirty()) {
+        /* ревізії збігаються, але наші зміни ще не дійшли — досилаємо */
+        setSyncStatus("Надсилаю збережені тут зміни…");
+        pushToServer(true, false);
       } else {
         setSyncStatus("Синхронізовано (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
       }
     });
   }
   function applyRestoredFromServer(data, rev) {
-    var prevPush = pushTimer;
-    if (prevPush) { clearTimeout(pushTimer); pushTimer = null; }
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     applyRestored(data);
     setLocalRev(rev);
+    setDirty(false);
+    setBase(data);
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
   }
   $("btnSyncSaveKey").onclick = function () {
@@ -1114,11 +1259,19 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     lastAutoPull = now;
     pullFromServer(false);
   }
+  /* застосунок ховається (перемикання вкладки/програми) — не чекаємо на таймер */
+  function flushPush() {
+    if (!canSync() || !isDirty()) return;
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+    pushToServer(true, false);
+  }
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) autoPull();
+    if (document.hidden) flushPush(); else autoPull();
   });
+  window.addEventListener("pagehide", flushPush);
   window.addEventListener("focus", autoPull);
   window.addEventListener("pageshow", autoPull);
+  window.addEventListener("online", function () { lastAutoPull = 0; autoPull(); });
   setInterval(function () {
     if (!document.hidden) autoPull();
   }, 60000);
@@ -1175,6 +1328,27 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     r.onerror = function () { alert("Помилка читання файлу."); inp.value = ""; };
     r.readAsText(f, "utf-8");
   };
+  /* копія даних цього пристрою перед злиттям — щоб нічого не зникло безслідно */
+  var CONFLICT_LS = "informTeacherHelperConflict";
+  function stashLocal() {
+    try { localStorage.setItem(CONFLICT_LS, JSON.stringify({ at: Date.now(), data: state })); } catch (e) {}
+  }
+  function refreshConflictBtn() {
+    var has = false;
+    try { has = !!localStorage.getItem(CONFLICT_LS); } catch (e) {}
+    $("btnConflict").style.display = has ? "inline-block" : "none";
+  }
+  $("btnConflict").onclick = function () {
+    var raw = null;
+    try { raw = localStorage.getItem(CONFLICT_LS); } catch (e) {}
+    var o = null;
+    try { o = JSON.parse(raw); } catch (e) {}
+    if (!o || !o.data) { alert("Копію не вдалося прочитати."); return; }
+    $("backupBox").style.display = "block";
+    $("backupText").value = JSON.stringify(o.data);
+    alert("Це дані цього пристрою до злиття з сервером (" +
+      new Date(o.at).toLocaleString() + ").\nЩоб повернути саме їх, натисніть «Відновити з тексту».");
+  };
   $("btnBackup").onclick = function () {
     $("backupBox").style.display = "block";
     $("backupText").value = JSON.stringify(state);
@@ -1201,6 +1375,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   renderKtp();
   renderBells();
   renderSched();
+  refreshConflictBtn();
   $("notesArea").value = state.notes;
 
   /* синхронізація при запуску */
