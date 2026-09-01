@@ -285,10 +285,12 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       <button class="btn secondary" id="btnSyncPush">Надіслати на сервер</button>
       <button class="btn secondary" id="btnSyncPull">Отримати з сервера</button>
       <button class="btn secondary" id="btnSyncCheck">Перевірити зв’язок</button>
+      <button class="btn danger" id="btnSyncForce">Замінити дані на сервері</button>
       <div class="hint" id="syncStatus"></div>
       <div class="hint mono" id="syncInfo" style="margin-top:6px;"></div>
       <div class="hint mono" id="syncDiag" style="margin-top:6px; white-space:pre-wrap;"></div>
       <div class="hint">Ключ має збігатися зі змінною <span class="mono">SYNC_KEY</span> на Railway. Після збереження ключа застосунок сам надсилає кожну зміну на сервер і під час запуску підтягує новіші дані.</div>
+      <div class="hint"><b>«Замінити дані на сервері»</b> — коли на сервері лежить чуже чи застаріле: сервер отримує точну копію цього пристрою, решта пристроїв підтягне її. <b>«Отримати з сервера»</b> — навпаки, замінює дані на цьому пристрої.</div>
     </div>
     <div class="card">
       <label>Резервна копія</label>
@@ -1101,6 +1103,21 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     try { localStorage.setItem(SYNCBASE_LS, JSON.stringify(o)); } catch (e) {}
   }
   function isObj(v) { return v && typeof v === "object" && !(v instanceof Array); }
+  /* усе, крім службової позначки часу */
+  function contentOf(o) {
+    if (!o) return null;
+    var c = {}, k;
+    for (k in o) if (o.hasOwnProperty(k) && k !== "updatedAt") c[k] = o[k];
+    return c;
+  }
+  /* Чи є тут дані, яких сервер не бачив? Прапорця мало: він міг не встигнути
+     з'явитися (відновлення з файлу, новий пристрій), а дані втрачати не можна. */
+  function hasLocalChanges() {
+    if (isDirty()) return true;
+    var b = getBase();
+    if (!b) return nClasses() > 0 || (state.notes || "") !== "";
+    return !sameJson(contentOf(b), contentOf(state));
+  }
   function sameJson(a, b) {
     try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; }
   }
@@ -1234,8 +1251,18 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
         return;
       }
       if (srvRev > localRev()) {
-        /* є незакінчений локальний запис — не затираємо його даними сервера наосліп */
-        if (isDirty()) { reconcile(srvData, srvRev, 0); return; }
+        /* Пристрій ще жодного разу не синхронізувався (новий, або дані щойно
+           відновлено з файлу), а на сервері лежить щось інше — не вирішуємо за
+           вчителя: нічого не чіпаємо й даємо вибрати. */
+        if (!getBase() && nClasses() > 0 && srvN > 0 &&
+            !sameJson(contentOf(srvData), contentOf(state))) {
+          setSyncStatus("На сервері інші дані: класів " + srvN + " (" + names(srvData.classes) +
+            "), тут — " + nClasses() + " (" + names(state.classes) + "). Нічого не змінюю. " +
+            "Натисніть «Замінити дані на сервері», щоб залишити тутешні, або «Отримати з сервера», щоб узяти серверні.", "err");
+          return;
+        }
+        /* тут є щось своє — зливаємо, а не затираємо даними сервера */
+        if (hasLocalChanges()) { reconcile(srvData, srvRev, 0); return; }
         applyRestoredFromServer(srvData, srvRev);
         setSyncStatus("Оновлено з сервера (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
       } else if (srvRev < localRev()) {
@@ -1311,6 +1338,25 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
   }
   $("btnSyncCheck").onclick = diagnose;
   $("btnSyncPush").onclick = function () { pushToServer(false, false); };
+  /* Аварійний вихід: на сервері чужі/застарілі дані — кладемо туди копію цього пристрою. */
+  $("btnSyncForce").onclick = function () {
+    if (!canSync()) { alert("Спочатку введіть і збережіть ключ синхронізації."); return; }
+    apiReq("GET", null, function (status, resp) {
+      var srvRev = (resp && resp.rev) || 0;
+      var srvD = resp && resp.data;
+      var srvN = (srvD && srvD.classes) ? srvD.classes.length : 0;
+      var what = (status === 200)
+        ? "На сервері зараз: ревізія " + srvRev + ", класів " + srvN + " (" + names(srvD && srvD.classes) + ")"
+        : "Сервер зараз не відповідає (код " + status + ")";
+      if (!confirm("Замінити ВСІ дані на сервері даними цього пристрою?\n\n" + what +
+          "\nТут: класів " + nClasses() + " (" + names(state.classes) + ")" +
+          "\n\nДані на сервері буде перезаписано, інші пристрої отримають цю копію.")) return;
+      stashLocal();
+      refreshConflictBtn();
+      setSyncStatus("Замінюю дані на сервері…");
+      pushToServer(false, true);
+    });
+  };
   $("btnSyncPull").onclick = function () { pullFromServer(true); };
 
   /* автопідтягування: при поверненні у застосунок і раз на хвилину */
