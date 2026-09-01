@@ -1219,9 +1219,10 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
         applyRestoredFromServer(srvData, srvRev);
         setSyncStatus("Оновлено з сервера (ревізія " + srvRev + ", класів: " + srvN + ")", "ok");
       } else if (srvRev < localRev()) {
-        /* сервер відкотився (напр. перезапуск без диска) — повертаємо свої дані */
-        setSyncStatus("Сервер втратив дані — відновлюю з цього пристрою…");
-        pushToServer(true, true);
+        /* сервер відкотився (перезапуск без постійного диска). Не затираємо його
+           своєю копією — інакше два пристрої по черзі стирають дані один одного. */
+        setSyncStatus("Сервер втратив частину даних — відновлюю та об’єдную…");
+        reconcile(srvData, srvRev, 0);
       } else if (isDirty()) {
         /* ревізії збігаються, але наші зміни ще не дійшли — досилаємо */
         setSyncStatus("Надсилаю збережені тут зміни…");

@@ -5,6 +5,7 @@ var path = require("path");
 
 var PORT = process.env.PORT || 3000;
 var SYNC_KEY = process.env.SYNC_KEY || "";
+var PERSISTENT = !!process.env.DATA_DIR;
 var DATA_FILE = path.join(process.env.DATA_DIR || __dirname, "data.json");
 var JSONH = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
 var sseClients = [];
@@ -61,7 +62,9 @@ http.createServer(function (req, res) {
       res.writeHead(403, JSONH); res.end(JSON.stringify({ error: "bad key" })); return;
     }
     fs.readFile(DATA_FILE, "utf8", function (err, txt) {
-      var info = { dataFile: DATA_FILE, hasData: false, rev: 0, classes: 0, classNames: [], savedAt: null };
+      var info = { dataFile: DATA_FILE, persistentStorage: PERSISTENT, hasData: false,
+                   rev: 0, classes: 0, classNames: [], savedAt: null };
+      if (!PERSISTENT) info.warning = "DATA_DIR is not set: data.json lives in the app folder and is erased on every deploy/restart";
       if (!err) {
         try {
           var o = JSON.parse(txt);
@@ -163,4 +166,9 @@ http.createServer(function (req, res) {
   });
 }).listen(PORT, function () {
   console.log("Teacher app listening on " + PORT);
+  console.log("Data file: " + DATA_FILE);
+  if (!PERSISTENT) {
+    console.warn("WARNING: DATA_DIR is not set. Synced data is stored inside the app folder " +
+      "and will be LOST on every deploy or restart. Attach a volume (e.g. /data) and set DATA_DIR=/data.");
+  }
 });
