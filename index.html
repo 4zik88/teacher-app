@@ -82,10 +82,27 @@ table.ktp tr.ksec td { background:#EAF1F8; color:#2456A6; font-weight:bold; curs
 table.sched { border-collapse:collapse; background:#FFF; width:100%; }
 table.sched th, table.sched td { border:1px solid #C7D6E5; padding:4px; }
 table.sched th { background:#EAF1F8; color:#2456A6; font-size:13px; padding:8px 4px; }
-table.sched td.num { text-align:center; font-weight:bold; background:#F4F7FA; width:30px; font-size:13px; }
+table.sched td.num { text-align:center; font-weight:bold; background:#F4F7FA; width:46px; font-size:13px; }
+table.sched td.num .numt { display:block; font-family:Menlo,Monaco,"Courier New",monospace;
+  font-size:10px; font-weight:400; color:#5A6B7C; margin-top:2px; }
 table.sched input { border:0; border-radius:0; padding:8px 6px; font-size:14px; width:100%; min-width:110px;
   -webkit-box-sizing:border-box; box-sizing:border-box; background:transparent; }
 table.sched td.today { background:#FFF6D9; }
+table.sched td.now { background:#FFE9A8; }
+
+/* ---- розклад дзвінків ---- */
+table.bells { border-collapse:collapse; background:#FFF; width:100%; }
+table.bells th, table.bells td { border:1px solid #C7D6E5; padding:8px 6px; font-size:14px; text-align:center; }
+table.bells th { background:#EAF1F8; color:#2456A6; font-size:12px; }
+table.bells td.bnum { width:30px; font-weight:bold; background:#F4F7FA; font-size:13px; }
+table.bells td.btime { font-family:Menlo,Monaco,"Courier New",monospace; white-space:nowrap; cursor:pointer; }
+table.bells td.bbreak { font-family:Menlo,Monaco,"Courier New",monospace; font-size:13px; color:#5A6B7C; white-space:nowrap; }
+table.bells td.bbreak b { color:#1D2B3A; font-size:14px; }
+table.bells td.bnote { text-align:left; font-size:13px; cursor:pointer; }
+table.bells tr.bnow td { background:#FFF6D9; }
+table.bells tr.bnow td.bnum { background:#FFE9A8; }
+table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
+.bnowline { font-size:14px; font-weight:600; color:#2456A6; margin:4px 0 2px 0; }
 
 /* ---- плани уроків ---- */
 .lesson { background:#FFF; border:2px solid #D8E3EE; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
@@ -218,8 +235,17 @@ table.sched td.today { background:#FFF6D9; }
   <div class="panel" id="p-sched">
     <div class="card">
       <label>Мій тижневий розклад</label>
-      <div class="hint" style="margin-bottom:8px;">Впишіть клас і кабінет у клітинки — зберігається автоматично. Сьогоднішній день підсвічено.</div>
+      <div class="hint" style="margin-bottom:8px;">Впишіть клас і кабінет у клітинки — зберігається автоматично. Сьогоднішній день підсвічено, поточний урок — яскравіше.</div>
       <div class="swrap"><table class="sched" id="schedTable"></table></div>
+    </div>
+
+    <div class="card">
+      <label>Розклад дзвінків</label>
+      <div class="hint" id="bHead"></div>
+      <div class="bnowline" id="bNow"></div>
+      <div class="swrap" style="margin-top:8px;"><table class="bells" id="bellsTable"></table></div>
+      <div class="hint" style="margin-top:8px;">Торкніться часу уроку або призначення перерви, щоб змінити. Перерва рахується автоматично — від кінця уроку до початку наступного.</div>
+      <button class="btn secondary" id="btnBellsReset" style="margin-top:8px;">Відновити стандартні дзвінки</button>
     </div>
   </div>
 
@@ -297,6 +323,20 @@ table.sched td.today { background:#FFF6D9; }
       state.sched = [];
       for (var d = 0; d < 5; d++) { var r = []; for (var l = 0; l < 8; l++) r.push(""); state.sched.push(r); }
     }
+    if (!state.bells || !state.bells.length) state.bells = defaultBells();
+  }
+  /* розклад дзвінків для 5–11 класів, 2026/2027 н. р. */
+  function defaultBells() {
+    return [
+      { s: "09:00", e: "09:45", note: "Відпочинок" },
+      { s: "09:50", e: "10:35", note: "Харчування учнів (I черга)" },
+      { s: "10:55", e: "11:40", note: "Відпочинок" },
+      { s: "11:50", e: "12:35", note: "Харчування учнів (III черга)" },
+      { s: "12:55", e: "13:40", note: "Відпочинок" },
+      { s: "13:50", e: "14:35", note: "Відпочинок" },
+      { s: "14:40", e: "15:25", note: "Відпочинок (за наявності 8-го уроку)" },
+      { s: "15:30", e: "16:15", note: "За потреби відповідно до розкладу занять" }
+    ];
   }
   function load() {
     try {
@@ -763,13 +803,18 @@ table.sched td.today { background:#FFF6D9; }
   var DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт"];
   function renderSched() {
     var todayIdx = new Date().getDay() - 1; // 0=Пн
+    var ph = bellPhase();
+    var nowLesson = (ph.kind === "lesson") ? ph.i : -1;
+    var b = bellsArr();
     var html = "<tr><th></th>", d, l;
     for (d = 0; d < 5; d++) html += "<th>" + DAYS[d] + "</th>";
     html += "</tr>";
     for (l = 0; l < 8; l++) {
-      html += '<tr><td class="num">' + (l + 1) + "</td>";
+      html += '<tr><td class="num">' + (l + 1) +
+        (b[l] ? '<span class="numt">' + esc(b[l].s) + "</span>" : "") + "</td>";
       for (d = 0; d < 5; d++) {
-        html += '<td' + (d === todayIdx ? ' class="today"' : "") + '>' +
+        var cls = (d === todayIdx) ? (l === nowLesson ? "now" : "today") : "";
+        html += '<td' + (cls ? ' class="' + cls + '"' : "") + '>' +
           '<input type="text" data-d="' + d + '" data-l="' + l + '" value="' +
           esc(state.sched[d][l]).replace(/"/g, "&quot;") + '" placeholder=""></td>';
       }
@@ -786,6 +831,135 @@ table.sched td.today { background:#FFF6D9; }
       })(inps[i]);
     }
   }
+
+  /* ---------- розклад дзвінків ---------- */
+  function bellsArr() {
+    if (!state.bells || !state.bells.length) state.bells = defaultBells();
+    return state.bells;
+  }
+  function t2m(s) {
+    var m = String(s).match(/^\s*(\d{1,2}):(\d{2})\s*$/);
+    if (!m) return null;
+    var h = Number(m[1]), mi = Number(m[2]);
+    if (h > 23 || mi > 59) return null;
+    return h * 60 + mi;
+  }
+  function m2t(n) {
+    n = ((n % 1440) + 1440) % 1440;
+    var h = Math.floor(n / 60), m = n % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  function breakLen(i) {
+    var b = bellsArr();
+    if (i + 1 >= b.length) return null;
+    var e = t2m(b[i].e), s = t2m(b[i + 1].s);
+    if (e === null || s === null || s < e) return null;
+    return s - e;
+  }
+  /* що відбувається зараз: урок, перерва, до/після занять або вихідний */
+  function bellPhase() {
+    var d = new Date(), wd = d.getDay();
+    if (wd === 0 || wd === 6) return { kind: "off" };
+    var b = bellsArr(), n = d.getHours() * 60 + d.getMinutes(), i, s, e, ns;
+    for (i = 0; i < b.length; i++) {
+      s = t2m(b[i].s); e = t2m(b[i].e);
+      if (s === null || e === null) continue;
+      if (n >= s && n < e) return { kind: "lesson", i: i, left: e - n };
+      if (i + 1 < b.length) {
+        ns = t2m(b[i + 1].s);
+        if (ns !== null && n >= e && n < ns) return { kind: "break", i: i, left: ns - n };
+      }
+    }
+    var first = t2m(b[0].s), last = t2m(b[b.length - 1].e);
+    if (first !== null && n < first) return { kind: "before", left: first - n };
+    if (last !== null && n >= last) return { kind: "after" };
+    return { kind: "none" };
+  }
+  function phaseText(ph) {
+    var b = bellsArr();
+    if (ph.kind === "off") return "Сьогодні вихідний — уроків немає.";
+    if (ph.kind === "lesson")
+      return "Зараз " + (ph.i + 1) + "-й урок — до дзвінка " + ph.left + " хв (о " + b[ph.i].e + ").";
+    if (ph.kind === "break")
+      return "Перерва (" + (b[ph.i].note || "відпочинок") + ") — наступний урок о " +
+        b[ph.i + 1].s + ", через " + ph.left + " хв.";
+    if (ph.kind === "before")
+      return "До початку занять " + ph.left + " хв (перший урок о " + b[0].s + ").";
+    if (ph.kind === "after") return "Уроки на сьогодні закінчилися.";
+    return "";
+  }
+  function renderBells() {
+    var b = bellsArr(), ph = bellPhase(), i;
+    var first = t2m(b[0].s), len = null;
+    if (first !== null && t2m(b[0].e) !== null) len = t2m(b[0].e) - first;
+    $("bHead").innerHTML = "Початок навчальних занять — <b>" + esc(b[0].s) + "</b>. Тривалість уроку — <b>" +
+      (len === null ? "45" : len) + "</b> хвилин.";
+    $("bNow").innerHTML = esc(phaseText(ph));
+
+    var out = "<tr><th>№<br>уроку</th><th>Час проведення<br>уроку</th>" +
+      "<th>Перерва після<br>уроку</th><th>Призначення перерви</th></tr>";
+    for (i = 0; i < b.length; i++) {
+      var cls = "";
+      if (ph.kind === "lesson" && ph.i === i) cls = "bnow";
+      else if (ph.kind === "break" && ph.i === i) cls = "bbrk";
+      var bl = breakLen(i);
+      var brCell = (i + 1 < b.length)
+        ? esc(b[i].e) + "–" + esc(b[i + 1].s) + (bl === null ? "" : "<br><b>" + bl + " хв</b>")
+        : "—";
+      out += "<tr" + (cls ? ' class="' + cls + '"' : "") + ">" +
+        '<td class="bnum">' + (i + 1) + "</td>" +
+        '<td class="btime" data-bt="' + i + '">' + esc(b[i].s) + "–" + esc(b[i].e) + "</td>" +
+        '<td class="bbreak">' + brCell + "</td>" +
+        '<td class="bnote" data-bn="' + i + '">' + esc(b[i].note || "") + "</td></tr>";
+    }
+    $("bellsTable").innerHTML = out;
+
+    var tds = $("bellsTable").getElementsByTagName("td"), t;
+    for (t = 0; t < tds.length; t++) {
+      var bt = tds[t].getAttribute("data-bt"), bn = tds[t].getAttribute("data-bn");
+      if (bt !== null) {
+        tds[t].onclick = (function (i2) {
+          return function () {
+            var cur = b[i2].s + "–" + b[i2].e;
+            var v = prompt("Час " + (i2 + 1) + "-го уроку (напр. 09:00–09:45):", cur);
+            if (v === null) return;
+            var parts = trim(v).split(/\s*[–—-]\s*/);
+            var s = parts[0] ? t2m(parts[0]) : null, e = parts[1] ? t2m(parts[1]) : null;
+            if (s === null || e === null || e <= s) {
+              alert("Вкажіть час у форматі 09:00–09:45 (кінець уроку — пізніше за початок).");
+              return;
+            }
+            b[i2].s = m2t(s); b[i2].e = m2t(e);
+            save(); renderBells(); renderSched();
+          };
+        })(Number(bt));
+      } else if (bn !== null) {
+        tds[t].onclick = (function (i2) {
+          return function () {
+            var v = prompt("Призначення перерви після " + (i2 + 1) + "-го уроку:", b[i2].note || "");
+            if (v === null) return;
+            b[i2].note = trim(v);
+            save(); renderBells();
+          };
+        })(Number(bn));
+      }
+    }
+  }
+  $("btnBellsReset").onclick = function () {
+    if (!confirm("Повернути стандартний розклад дзвінків (початок о 09:00, урок 45 хв)?")) return;
+    state.bells = defaultBells();
+    save(); renderBells(); renderSched();
+  };
+  /* підсвічування поточного уроку/перерви оновлюється саме собою */
+  setInterval(function () {
+    if (document.hidden) return;
+    if ($("p-sched").className.indexOf("active") === -1) return;
+    renderBells();
+    /* не перемальовуємо таблицю, поки в ній щось редагують */
+    var ae = document.activeElement;
+    if (ae && ae.tagName === "INPUT" && ae.getAttribute("data-l") !== null) return;
+    renderSched();
+  }, 30000);
 
   /* ---------- нотатки ---------- */
   var notesTimer = null;
@@ -954,7 +1128,8 @@ table.sched td.today { background:#FFF6D9; }
     state = s;
     ensureDefaults();
     save();
-    renderClassSelects(); renderClassList(); renderJournal(); renderLessons(); renderKtp(); renderSched();
+    renderClassSelects(); renderClassList(); renderJournal(); renderLessons(); renderKtp();
+    renderBells(); renderSched();
     $("notesArea").value = state.notes;
   }
   $("btnFileSave").onclick = function () {
@@ -1024,6 +1199,7 @@ table.sched td.today { background:#FFF6D9; }
   renderJournal();
   renderLessons();
   renderKtp();
+  renderBells();
   renderSched();
   $("notesArea").value = state.notes;
 
