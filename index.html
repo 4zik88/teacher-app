@@ -247,6 +247,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       <div class="hint" style="margin-bottom:8px;">Впишіть клас і кабінет у клітинки — зберігається автоматично. Сьогоднішній день підсвічено, поточний урок — яскравіше.</div>
       <div class="weekbar">
         Цей тиждень — <span class="weektag" id="weekTag">І</span>
+        <span id="weekWhat" style="margin-left:8px; font-size:15px;"></span>
         <button class="btn secondary" id="btnWeekSwap" style="padding:6px 10px; font-size:14px; margin-left:6px;">Ні, зараз ІІ</button>
         <div class="hint" id="weekHint"></div>
       </div>
@@ -845,8 +846,9 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
      Приймаємо і кирилицю, і латиницю, і цифри, крапку або двокрапку. */
   function weekTagOf(txt) {
     var t = String(txt || "");
-    if (/^\s*(ІІ|II|іі|ii|2)\s*[:.]/.test(t)) return 2;
-    if (/^\s*(І|I|і|i|1)\s*[:.]/.test(t)) return 1;
+    /* риска дозволена лише після літери: «1-А інформ.» — це клас, а не позначка */
+    if (/^\s*(?:(?:ІІ|II|іі|ii|\u2161)\s*[:.)\-\u2013\u2014]|2\s*[:.)])/.test(t)) return 2;
+    if (/^\s*(?:(?:І|I|і|i|\u2160)\s*[:.)\-\u2013\u2014]|1\s*[:.)])/.test(t)) return 1;
     return 0;
   }
   function setWeekType(t) {
@@ -854,13 +856,22 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     save(); renderSched();
   }
   function renderWeekBar() {
-    var wk = curWeekType(), other = wk === 1 ? 2 : 1;
+    var wk = curWeekType(), other = wk === 1 ? 2 : 1, i, d, n = 0;
     $("weekTag").innerHTML = weekName(wk);
     $("btnWeekSwap").innerHTML = "Ні, зараз " + weekName(other);
-    $("weekHint").innerHTML =
-      "Урок, що буває через тиждень, починайте з «І:» або «ІІ:» — напр. <b>І: 8-Б інформ.</b> " +
-      "Цього тижня є уроки з «" + weekName(wk) + ":», а з «" + weekName(other) +
-      ":» — немає: вони сірі й закреслені.";
+    /* скільки позначених уроків розпізнано — якщо 0, позначка написана не так */
+    for (d = 0; d < 5; d++) for (i = 0; i < 8; i++) if (weekTagOf(state.sched[d][i])) n++;
+    $("weekWhat").innerHTML = (wk === 1)
+      ? "уроки з «І:» цього тижня <b>є</b>"
+      : "уроків з «І:» цього тижня <b>немає</b>";
+    $("weekWhat").style.color = (wk === 1) ? "#3A7D44" : "#C94F4F";
+    $("weekHint").innerHTML = n
+      ? "Урок, що буває через тиждень, починайте з «І:» — напр. <b>І: 8-Б інформ.</b> " +
+        "У «свій» тиждень він жирний із зеленою рискою, в інший — сірий і закреслений. " +
+        "Позначених уроків у розкладі: <b>" + n + "</b>. " +
+        "Якщо якийсь урок буває навпаки — починайте його з «ІІ:»."
+      : "Урок, що буває через тиждень, починайте з «І:» — напр. <b>І: 8-Б інформ.</b> " +
+        "Зараз таких уроків у розкладі не знайдено.";
   }
   function renderTodayLine() {
     var d = new Date(), wd = d.getDay() - 1, wk = curWeekType(), b = bellsArr(), i, out = [];
