@@ -89,6 +89,15 @@ table.sched input { border:0; border-radius:0; padding:8px 6px; font-size:14px; 
   -webkit-box-sizing:border-box; box-sizing:border-box; background:transparent; }
 table.sched td.today { background:#FFF6D9; }
 table.sched td.now { background:#FFE9A8; }
+/* урок через тиждень: цього тижня його немає */
+table.sched td.offweek input { color:#A9B5C1; text-decoration:line-through; }
+table.sched td.altnow input { font-weight:700; }
+table.sched td.altnow { box-shadow:inset 3px 0 0 #3A7D44; }
+.weekbar { margin-bottom:8px; }
+.weektag { display:inline-block; min-width:18px; text-align:center; padding:2px 9px; border-radius:6px;
+  background:#2456A6; color:#FFF; font-weight:700; font-size:15px; font-family:Menlo,Monaco,monospace; }
+.todayline { font-size:14px; margin-bottom:10px; color:#1D2B3A; }
+.todayline .tl { font-family:Menlo,Monaco,monospace; font-size:13px; color:#5A6B7C; }
 
 /* ---- розклад дзвінків ---- */
 table.bells { border-collapse:collapse; background:#FFF; width:100%; }
@@ -236,6 +245,12 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
     <div class="card">
       <label>Мій тижневий розклад</label>
       <div class="hint" style="margin-bottom:8px;">Впишіть клас і кабінет у клітинки — зберігається автоматично. Сьогоднішній день підсвічено, поточний урок — яскравіше.</div>
+      <div class="weekbar">
+        Цей тиждень — <span class="weektag" id="weekTag">І</span>
+        <button class="btn secondary" id="btnWeekSwap" style="padding:6px 10px; font-size:14px; margin-left:6px;">Ні, зараз ІІ</button>
+        <div class="hint" id="weekHint"></div>
+      </div>
+      <div class="todayline" id="todayLine"></div>
       <div class="swrap"><table class="sched" id="schedTable"></table></div>
     </div>
 
@@ -808,11 +823,68 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
 
   /* ---------- розклад ---------- */
   var DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт"];
+  /* ---- чисельник / знаменник ----
+     Точка відліку: тиждень від понеділка 14.09.2026 вважається І.
+     state.weekShift (0 або 1) зсуває відлік, якщо в школі рахують навпаки. */
+  var WEEK_EPOCH = new Date(2026, 8, 14);
+  function mondayOf(dt) {
+    var x = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    var wd = x.getDay();
+    x.setDate(x.getDate() + (wd === 0 ? -6 : 1 - wd));
+    return x;
+  }
+  function weekIndex(dt) {
+    return Math.round((mondayOf(dt).getTime() - WEEK_EPOCH.getTime()) / 604800000);
+  }
+  function curWeekType() {
+    var n = weekIndex(new Date()) + (state.weekShift || 0);
+    return (((n % 2) + 2) % 2) === 0 ? 1 : 2;
+  }
+  function weekName(t) { return t === 1 ? "І" : "ІІ"; }
+  /* «І:» / «ІІ:» на початку клітинки — урок через тиждень.
+     Приймаємо і кирилицю, і латиницю, і цифри, крапку або двокрапку. */
+  function weekTagOf(txt) {
+    var t = String(txt || "");
+    if (/^\s*(ІІ|II|іі|ii|2)\s*[:.]/.test(t)) return 2;
+    if (/^\s*(І|I|і|i|1)\s*[:.]/.test(t)) return 1;
+    return 0;
+  }
+  function setWeekType(t) {
+    if (curWeekType() !== t) state.weekShift = ((state.weekShift || 0) + 1) % 2;
+    save(); renderSched();
+  }
+  function renderWeekBar() {
+    var wk = curWeekType(), other = wk === 1 ? 2 : 1;
+    $("weekTag").innerHTML = weekName(wk);
+    $("btnWeekSwap").innerHTML = "Ні, зараз " + weekName(other);
+    $("weekHint").innerHTML =
+      "Урок, що буває через тиждень, починайте з «І:» або «ІІ:» — напр. <b>І: 8-Б інформ.</b> " +
+      "Цього тижня є уроки з «" + weekName(wk) + ":», а з «" + weekName(other) +
+      ":» — немає: вони сірі й закреслені.";
+  }
+  function renderTodayLine() {
+    var d = new Date(), wd = d.getDay() - 1, wk = curWeekType(), b = bellsArr(), i, out = [];
+    if (wd < 0 || wd > 4) { $("todayLine").innerHTML = '<span class="hint">Сьогодні вихідний — уроків немає.</span>'; return; }
+    for (i = 0; i < 8; i++) {
+      var v = trim(state.sched[wd][i] || "");
+      if (!v) continue;
+      var tag = weekTagOf(v);
+      if (tag !== 0 && tag !== wk) continue;
+      out.push((i + 1) + ") " + (b[i] ? b[i].s + " " : "") + v);
+    }
+    $("todayLine").innerHTML = out.length
+      ? "<b>Сьогодні (" + DAYS[wd] + ", " + weekName(wk) + " тиждень):</b> " +
+        '<span class="tl">' + esc(out.join("  ·  ")) + "</span>"
+      : "<b>Сьогодні (" + DAYS[wd] + "):</b> уроків немає.";
+  }
   function renderSched() {
     var todayIdx = new Date().getDay() - 1; // 0=Пн
     var ph = bellPhase();
     var nowLesson = (ph.kind === "lesson") ? ph.i : -1;
     var b = bellsArr();
+    var wk = curWeekType();
+    renderWeekBar();
+    renderTodayLine();
     var html = "<tr><th></th>", d, l;
     for (d = 0; d < 5; d++) html += "<th>" + DAYS[d] + "</th>";
     html += "</tr>";
@@ -820,8 +892,13 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       html += '<tr><td class="num">' + (l + 1) +
         (b[l] ? '<span class="numt">' + esc(b[l].s) + "</span>" : "") + "</td>";
       for (d = 0; d < 5; d++) {
-        var cls = (d === todayIdx) ? (l === nowLesson ? "now" : "today") : "";
-        html += '<td' + (cls ? ' class="' + cls + '"' : "") + '>' +
+        var tag = weekTagOf(state.sched[d][l]);
+        var off = (tag !== 0 && tag !== wk);       /* цього тижня цього уроку немає */
+        var cls = [];
+        if (d === todayIdx) cls.push((l === nowLesson && !off) ? "now" : "today");
+        if (off) cls.push("offweek");
+        else if (tag !== 0) cls.push("altnow");    /* через тиждень, і саме цього тижня є */
+        html += '<td' + (cls.length ? ' class="' + cls.join(" ") + '"' : "") + '>' +
           '<input type="text" data-d="' + d + '" data-l="' + l + '" value="' +
           esc(state.sched[d][l]).replace(/"/g, "&quot;") + '" placeholder=""></td>';
       }
@@ -841,6 +918,7 @@ table.bells tr.bbrk td.bbreak { background:#FFF6D9; }
       inps[i].oninput = h;
       inps[i].onchange = h;
     }
+    $("btnWeekSwap").onclick = function () { setWeekType(curWeekType() === 1 ? 2 : 1); };
   }
 
   /* ---------- розклад дзвінків ---------- */
